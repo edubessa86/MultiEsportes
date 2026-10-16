@@ -1,85 +1,87 @@
-```graphql
-type Query {
-  ping: String
-  sports: [Sport!]!
-  modalities: [Modality!]!
-  modality(id: ID!): Modality
-  catalog: Catalog!
-  me: User
-  mySessions(limit: Int, offset: Int): [Session!]!
-  ranking(sportId: ID!, period: String!): [RankingEntry!]!
-  seasons: [Season!]!
-}
+import { parse } from "graphql";
 
-type Mutation {
-  ping: String
-  login(input: LoginInput!): AuthPayload!
-  register(input: RegisterInput!): AuthPayload!
-  createSession(input: SessionInput!): Session!
-}
+const typeDefs = parse(`
+  type Query {
+    ping: String
+    sports: [Sport!]!
+    modalities: [Modality!]!
+    modality(id: ID!): Modality
+    catalog: Catalog!
+    me: User
+    mySessions(limit: Int, offset: Int): [Session!]!
+    ranking(sportId: ID!, period: String!): [RankingEntry!]!
+    seasons: [Season!]!
+  }
 
-type Sport {
-  id: ID!
-  name: String!
-  description: String
-}
+  type Mutation {
+    ping: String
+    login(input: LoginInput!): AuthPayload!
+    register(input: RegisterInput!): AuthPayload!
+    createSession(input: SessionInput!): Session!
+  }
 
-type Modality {
-  id: ID!
-  name: String!
-  sportId: ID!
-}
+  type Sport {
+    id: ID!
+    name: String!
+    description: String
+  }
 
-type Season {
-  id: ID!
-  name: String!
-  startDate: String
-  endDate: String
-}
+  type Modality {
+    id: ID!
+    name: String!
+    sportId: ID!
+  }
 
-type Catalog {
-  sports: [Sport!]!
-  modalities: [Modality!]!
-}
+  type Season {
+    id: ID!
+    name: String!
+    startDate: String
+    endDate: String
+  }
 
-type User {
-  id: ID!
-  email: String!
-  name: String!
-}
+  type Catalog {
+    sports: [Sport!]!
+    modalities: [Modality!]!
+  }
 
-type Session {
-  id: ID!
-  sportId: ID!
-  duration: Int!
-  createdAt: String!
-}
+  type User {
+    id: ID!
+    email: String!
+    name: String!
+  }
 
-type RankingEntry {
-  userId: ID!
-  userName: String!
-  score: Float!
-  position: Int!
-}
+  type Session {
+    id: ID!
+    sportId: ID!
+    duration: Int!
+    createdAt: String!
+  }
 
-input LoginInput {
-  email: String!
-  password: String!
-}
+  type RankingEntry {
+    userId: ID!
+    userName: String!
+    score: Float!
+    position: Int!
+  }
 
-input RegisterInput {
-  email: String!
-  password: String!
-  name: String!
-}
+  input LoginInput {
+    email: String!
+    password: String!
+  }
 
-input SessionInput {
-  sportId: ID!
-  duration: Int!
-}
+  input RegisterInput {
+    email: String!
+    password: String!
+    name: String!
+  }
 
-type AuthPayload {
-  token: String!
-  user: User!
-}
-```
+  input SessionInput {
+    sportId: ID!
+    duration: Int!
+  }
+
+  type AuthPayload {
+    token: String!
+    user: User!
+  }
+`);
