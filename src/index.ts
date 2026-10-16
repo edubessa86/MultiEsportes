@@ -47,15 +47,20 @@ for (const d of doc.definitions) {
   }
 }
 
-// Função para garantir que as tabelas existem e inserir os desportos sem conflitos de parâmetros
+// Função para garantir que a tabela, o índice único e os desportos existem
 async function initDb() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sports (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL UNIQUE,
+        name VARCHAR(255) NOT NULL,
         sort_order INT DEFAULT 0
       );
+    `);
+
+    // Garante o índice único na coluna name para o ON CONFLICT funcionar
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS sports_name_idx ON sports (name);
     `);
 
     await pool.query(`
