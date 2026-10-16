@@ -47,33 +47,28 @@ for (const d of doc.definitions) {
   }
 }
 
-// Função para garantir que as tabelas existem e inserir os desportos de forma segura
+// Função para garantir que as tabelas existem e inserir os desportos sem conflitos de parâmetros
 async function initDb() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sports (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL UNIQUE,
         sort_order INT DEFAULT 0
       );
     `);
 
-    // Inserção segura verificando a existência de cada registo individualmente
-    const sportsList = [
-      { name: 'Futebol Campo', order: 1 },
-      { name: 'Futebol Salão', order: 2 },
-      { name: 'Futebol Society', order: 3 },
-    ];
+    await pool.query(`
+      INSERT INTO sports (name, sort_order) VALUES 
+      ('Futebol Campo', 1),
+      ('Futebol Salão', 2),
+      ('Futebol Society', 3)
+      ON CONFLICT (name) DO NOTHING;
+    `);
 
-    for (const sport of sportsList) {
-      await pool.query(`
-        INSERT INTO sports (name, sort_order)
-        SELECT $1, $2
-        WHERE NOT EXISTS (SELECT 1 FROM sports WHERE name = $1);
-      `, [sport.name, sport.order]);
-    }
+    const check = await pool.query('SELECT COUNT(*) FROM sports');
+    console.log(`Diagnóstico Base de Dados -> Total de desportos na tabela 'sports': ${check.rows[0].count}`);
 
-    console.log("Tabela 'sports' verificada e desportos inseridos com sucesso.");
   } catch (error) {
     console.error("Erro ao inicializar as tabelas na base de dados:", error);
   }
