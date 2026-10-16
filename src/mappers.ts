@@ -2,7 +2,10 @@ import { row } from './db.js';
 import { pickLang } from './context.js';
 
 type Lang = 'pt-BR' | 'en';
-const label = (r: any, base: string, lang: Lang) => (lang === 'en' ? r[`${base}_en`] ?? r[`${base}_pt`] : r[`${base}_pt`]);
+const label = (r: any, base: string, lang: Lang) =>
+  lang === 'en'
+    ? r[`${base}_en`] ?? r[`${base}_pt`] ?? r[base]
+    : r[`${base}_pt`] ?? r[base] ?? r[`${base}_en`];
 
 export function mapSport(r: any, lang: unknown) {
   const l = pickLang(lang);
