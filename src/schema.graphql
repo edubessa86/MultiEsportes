@@ -1,87 +1,70 @@
+import { ApolloServer } from "@apollo/server";
+import { expressMiddleware } from "@as-integrations/express5";
+import cors from "cors";
+import express from "express";
 import { parse } from "graphql";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const typeDefs = parse(`
-  type Query {
-    ping: String
-    sports: [Sport!]!
-    modalities: [Modality!]!
-    modality(id: ID!): Modality
-    catalog: Catalog!
-    me: User
-    mySessions(limit: Int, offset: Int): [Session!]!
-    ranking(sportId: ID!, period: String!): [RankingEntry!]!
-    seasons: [Season!]!
-  }
+// O arquivo schema.graphql deve ficar em src/schema.graphql.
+// Coloque nele somente o schema, sem as cercas ```graphql e ```.
+const schemaPath = fileURLToPath(
+  new URL("./schema.graphql", import.meta.url),
+);
 
-  type Mutation {
-    ping: String
-    login(input: LoginInput!): AuthPayload!
-    register(input: RegisterInput!): AuthPayload!
-    createSession(input: SessionInput!): Session!
-  }
+const typeDefs = parse(readFileSync(schemaPath, "utf8"));
 
-  type Sport {
-    id: ID!
-    name: String!
-    description: String
-  }
+interface Context {
+  // Adicione aqui informações da requisição, como usuário autenticado.
+}
 
-  type Modality {
-    id: ID!
-    name: String!
-    sportId: ID!
-  }
+const resolvers = {
+  Query: {
+    ping: (): string => "pong",
 
-  type Season {
-    id: ID!
-    name: String!
-    startDate: String
-    endDate: String
-  }
+    // Implemente os demais campos Query conforme os dados da aplicação:
+    // sports, modalities, modality, catalog, me, mySessions,
+    // ranking e seasons.
+  },
 
-  type Catalog {
-    sports: [Sport!]!
-    modalities: [Modality!]!
-  }
+  Mutation: {
+    ping: (): string => "pong",
 
-  type User {
-    id: ID!
-    email: String!
-    name: String!
-  }
+    // Implemente login, register e createSession conforme
+    // as regras e os dados da aplicação.
+  },
+};
 
-  type Session {
-    id: ID!
-    sportId: ID!
-    duration: Int!
-    createdAt: String!
-  }
+async function startServer(): Promise<void> {
+  const app = express();
+  const port = Number(process.env.PORT) || 4000;
 
-  type RankingEntry {
-    userId: ID!
-    userName: String!
-    score: Float!
-    position: Int!
-  }
+  const server = new ApolloServer<Context>({
+    typeDefs,
+    resolvers,
+  });
 
-  input LoginInput {
-    email: String!
-    password: String!
-  }
+  await server.start();
 
-  input RegisterInput {
-    email: String!
-    password: String!
-    name: String!
-  }
+  app.use(
+    "/graphql",
+    cors<cors.CorsRequest>(),
+    express.json(),
+    expressMiddleware(server, {
+      context: async (): Promise<Context> => ({}),
+    }),
+  );
 
-  input SessionInput {
-    sportId: ID!
-    duration: Int!
-  }
+  app.get("/", (_req, res) => {
+    res.status(200).send("API GraphQL disponível em /graphql");
+  });
 
-  type AuthPayload {
-    token: String!
-    user: User!
-  }
-`);
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`Servidor iniciado na porta ${port}`);
+  });
+}
+
+startServer().catch((error: unknown) => {
+  console.error("Falha ao iniciar o servidor:", error);
+  process.exit(1);
+});
