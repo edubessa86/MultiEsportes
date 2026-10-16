@@ -1,0 +1,18 @@
+# Postgres local para desenvolvimento. Aplica o esquema e o catálogo na 1ª subida.
+# Para recriar do zero:  docker compose down -v && docker compose up -d
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev_only
+    ports:
+      - "127.0.0.1:5432:5432"   # só acessível da sua máquina
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ../db/02_seed_catalog.sql:/docker-entrypoint-initdb.d/02_seed_catalog.sql:ro
+      - ../db/04_app_role.sql:/docker-entrypoint-initdb.d/04_app_role.sql:ro
+volumes:
+  pgdata:
