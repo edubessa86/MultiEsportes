@@ -1,70 +1,75 @@
-import { ApolloServer } from "@apollo/server";
-import { expressMiddleware } from "@as-integrations/express5";
-import cors from "cors";
-import express from "express";
-import { parse } from "graphql";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
-// O arquivo schema.graphql deve ficar em src/schema.graphql.
-// Coloque nele somente o schema, sem as cercas ```graphql e ```.
-const schemaPath = fileURLToPath(
-  new URL("./schema.graphql", import.meta.url),
-);
-
-const typeDefs = parse(readFileSync(schemaPath, "utf8"));
-
-interface Context {
-  // Adicione aqui informações da requisição, como usuário autenticado.
+type Query {
+  ping: String
+  sports: [Sport!]!
+  modalities: [Modality!]!
+  modality(id: ID!): Modality
+  catalog: Catalog!
+  me: User
+  mySessions(limit: Int, offset: Int): [Session!]!
+  ranking(sportId: ID!, period: String!): [RankingEntry!]!
 }
 
-const resolvers = {
-  Query: {
-    ping: (): string => "pong",
-
-    // Implemente os demais campos Query conforme os dados da aplicação:
-    // sports, modalities, modality, catalog, me, mySessions,
-    // ranking e seasons.
-  },
-
-  Mutation: {
-    ping: (): string => "pong",
-
-    // Implemente login, register e createSession conforme
-    // as regras e os dados da aplicação.
-  },
-};
-
-async function startServer(): Promise<void> {
-  const app = express();
-  const port = Number(process.env.PORT) || 4000;
-
-  const server = new ApolloServer<Context>({
-    typeDefs,
-    resolvers,
-  });
-
-  await server.start();
-
-  app.use(
-    "/graphql",
-    cors<cors.CorsRequest>(),
-    express.json(),
-    expressMiddleware(server, {
-      context: async (): Promise<Context> => ({}),
-    }),
-  );
-
-  app.get("/", (_req, res) => {
-    res.status(200).send("API GraphQL disponível em /graphql");
-  });
-
-  app.listen(port, "0.0.0.0", () => {
-    console.log(`Servidor iniciado na porta ${port}`);
-  });
+type Mutation {
+  ping: String
+  login(input: LoginInput!): AuthPayload!
+  register(input: RegisterInput!): AuthPayload!
+  createSession(input: SessionInput!): Session!
 }
 
-startServer().catch((error: unknown) => {
-  console.error("Falha ao iniciar o servidor:", error);
-  process.exit(1);
-});
+type Sport {
+  id: ID!
+  name: String!
+  description: String
+}
+
+type Modality {
+  id: ID!
+  name: String!
+  sportId: ID!
+}
+
+type Catalog {
+  sports: [Sport!]!
+  modalities: [Modality!]!
+}
+
+type User {
+  id: ID!
+  email: String!
+  name: String!
+}
+
+type Session {
+  id: ID!
+  sportId: ID!
+  duration: Int!
+  createdAt: String!
+}
+
+type RankingEntry {
+  userId: ID!
+  userName: String!
+  score: Float!
+  position: Int!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+input RegisterInput {
+  email: String!
+  password: String!
+  name: String!
+}
+
+input SessionInput {
+  sportId: ID!
+  duration: Int!
+}
+
+type AuthPayload {
+  token: String!
+  user: User!
+}
