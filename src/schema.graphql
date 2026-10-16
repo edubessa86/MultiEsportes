@@ -1,6 +1,7 @@
 type Query {
   ping: String
   sports: [Sport!]!
+  modalities: [Modality!]!
   catalog: Catalog!
   me: User
   mySessions(limit: Int, offset: Int): [Session!]!
@@ -20,8 +21,15 @@ type Sport {
   description: String
 }
 
+type Modality {
+  id: ID!
+  name: String!
+  sportId: ID!
+}
+
 type Catalog {
   sports: [Sport!]!
+  modalities: [Modality!]!
 }
 
 type User {
