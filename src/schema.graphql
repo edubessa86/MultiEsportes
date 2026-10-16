@@ -1,7 +1,66 @@
 type Query {
   ping: String
+  sports: [Sport!]!
+  catalog: Catalog!
+  me: User
+  mySessions(limit: Int, offset: Int): [Session!]!
+  ranking(sportId: ID!, period: String!): [RankingEntry!]!
 }
 
 type Mutation {
   ping: String
+  login(input: LoginInput!): AuthPayload!
+  register(input: RegisterInput!): AuthPayload!
+  createSession(input: SessionInput!): Session!
+}
+
+type Sport {
+  id: ID!
+  name: String!
+  description: String
+}
+
+type Catalog {
+  sports: [Sport!]!
+}
+
+type User {
+  id: ID!
+  email: String!
+  name: String!
+}
+
+type Session {
+  id: ID!
+  sportId: ID!
+  duration: Int!
+  createdAt: String!
+}
+
+type RankingEntry {
+  userId: ID!
+  userName: String!
+  score: Float!
+  position: Int!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+input RegisterInput {
+  email: String!
+  password: String!
+  name: String!
+}
+
+input SessionInput {
+  sportId: ID!
+  duration: Int!
+}
+
+type AuthPayload {
+  token: String!
+  user: User!
 }
