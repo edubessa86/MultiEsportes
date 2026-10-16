@@ -49,7 +49,15 @@ for (const d of doc.definitions) {
 
 console.log("Criando servidor GraphQL Yoga...");
 const yoga = createYoga<{}, Ctx>({
-  schema: createSchema({ typeDefs, resolvers }),
+  // Compatibilidade temporária: o schema.graphql legado não contém ainda
+  // todas as operações dos módulos atuais. Evita que resolvers extras
+  // derrubem o processo durante o boot; essas operações só serão acessíveis
+  // via GraphQL depois de serem declaradas no SDL.
+  schema: createSchema({
+    typeDefs,
+    resolvers,
+    resolverValidationOptions: { requireResolversToMatchSchema: 'ignore' },
+  }),
   graphiql: !config.isProd,
   cors: false,
   maskedErrors: config.isProd,
