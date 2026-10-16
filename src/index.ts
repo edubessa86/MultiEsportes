@@ -47,17 +47,26 @@ for (const d of doc.definitions) {
   }
 }
 
-// Função para garantir que as tabelas essenciais existem na base de dados
+// Função para garantir que as tabelas existem e inserir apenas os desportos pretendidos
 async function initDb() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sports (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL UNIQUE,
         sort_order INT DEFAULT 0
       );
     `);
-    console.log("Tabela 'sports' verificada/criada com sucesso na base de dados.");
+
+    await pool.query(`
+      INSERT INTO sports (name, sort_order) VALUES 
+      ('Futebol Campo', 1),
+      ('Futebol Salão', 2),
+      ('Futebol Society', 3)
+      ON CONFLICT (name) DO NOTHING;
+    `);
+
+    console.log("Tabela 'sports' verificada e desportos inseridos com sucesso.");
   } catch (error) {
     console.error("Erro ao inicializar as tabelas na base de dados:", error);
   }
@@ -85,7 +94,6 @@ const server = createServer(yoga);
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 const HOST = '0.0.0.0';
 
-// Inicializa a base de dados e só depois arranca o servidor
 initDb().then(() => {
   server.listen(PORT, HOST, () => {
     console.log(`API pronta em http://${HOST}:${PORT}/graphql`);
