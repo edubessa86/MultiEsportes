@@ -3,6 +3,7 @@ type Query {
   sports: [Sport!]!
   modalities: [Modality!]!
   modality(id: ID!): Modality
+  seasons: [Season!]!
   catalog: Catalog!
   me: User
   mySessions(limit: Int, offset: Int): [Session!]!
@@ -28,9 +29,16 @@ type Modality {
   sportId: ID!
 }
 
+type Season {
+  id: ID!
+  name: String!
+  active: Boolean!
+}
+
 type Catalog {
   sports: [Sport!]!
   modalities: [Modality!]!
+  seasons: [Season!]!
 }
 
 type User {
