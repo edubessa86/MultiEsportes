@@ -47,6 +47,22 @@ for (const d of doc.definitions) {
   }
 }
 
+// Função para garantir que as tabelas essenciais existem na base de dados
+async function initDb() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS sports (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        sort_order INT DEFAULT 0
+      );
+    `);
+    console.log("Tabela 'sports' verificada/criada com sucesso na base de dados.");
+  } catch (error) {
+    console.error("Erro ao inicializar as tabelas na base de dados:", error);
+  }
+}
+
 console.log("Criando servidor GraphQL Yoga...");
 const yoga = createYoga<{}, Ctx>({
   schema: createSchema({
@@ -55,7 +71,7 @@ const yoga = createYoga<{}, Ctx>({
     resolverValidationOptions: { requireResolversToMatchSchema: 'ignore' },
   }),
   graphiql: !config.isProd,
-  cors: true, // Ativado para permitir testes em clientes web externos (como o Hoppscotch)
+  cors: true,
   maskedErrors: config.isProd,
   context: async ({ request }): Promise<Ctx> => {
     const h = request.headers.get('authorization') ?? '';
@@ -66,15 +82,17 @@ const yoga = createYoga<{}, Ctx>({
 
 const server = createServer(yoga);
 
-// Configuração obrigatória para o Render detetar a porta aberta externamente
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 const HOST = '0.0.0.0';
 
-server.listen(PORT, HOST, () => {
-  console.log(`API pronta em http://${HOST}:${PORT}/graphql`);
-  console.log(`Implementado: ${Object.keys(resolvers.Query).length - pending.filter((p) => p.startsWith('Query.')).length} queries, ` +
-    `${Object.keys(resolvers.Mutation).length - pending.filter((p) => p.startsWith('Mutation.')).length} mutations ` +
-    `(${pending.length} operações do schema ainda respondem NOT_IMPLEMENTED).`);
+// Inicializa a base de dados e só depois arranca o servidor
+initDb().then(() => {
+  server.listen(PORT, HOST, () => {
+    console.log(`API pronta em http://${HOST}:${PORT}/graphql`);
+    console.log(`Implementado: ${Object.keys(resolvers.Query).length - pending.filter((p) => p.startsWith('Query.')).length} queries, ` +
+      `${Object.keys(resolvers.Mutation).length - pending.filter((p) => p.startsWith('Mutation.')).length} mutations ` +
+      `(${pending.length} operações do schema ainda respondem NOT_IMPLEMENTED).`);
+  });
 });
 
 const shutdown = () => server.close(() => pool.end().finally(() => process.exit(0)));
