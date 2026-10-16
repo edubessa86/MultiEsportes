@@ -62,9 +62,9 @@ const yoga = createYoga<{}, Ctx>({
 
 const server = createServer(yoga);
 
-// Obrigatório para o Render detetar a porta aberta externamente
+// Utiliza obrigatoriamente a porta fornecida pelo Render (process.env.PORT)
+const PORT = Number(process.env.PORT) || config.port || 4000;
 const HOST = '0.0.0.0';
-const PORT = config.port;
 
 server.listen(PORT, HOST, () => {
   console.log(`API pronta em http://${HOST}:${PORT}/graphql`);
