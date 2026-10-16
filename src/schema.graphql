@@ -3,14 +3,12 @@ type Query {
   sports: [Sport!]!
   modalities: [Modality!]!
   modality(id: ID!): Modality
-  seasons: [Season!]!
   catalog: Catalog!
   me: User
-  viewer: User
-  user(id: ID!): User
   mySessions(limit: Int, offset: Int): [Session!]!
   ranking(sportId: ID!, period: String!): [RankingEntry!]!
-  myConsents: [Consent!]!
+  seasons: [Season!]!
+  session(id: ID!): Session
 }
 
 type Mutation {
@@ -35,26 +33,19 @@ type Modality {
 type Season {
   id: ID!
   name: String!
-  active: Boolean!
+  startDate: String
+  endDate: String
 }
 
 type Catalog {
   sports: [Sport!]!
   modalities: [Modality!]!
-  seasons: [Season!]!
 }
 
 type User {
   id: ID!
   email: String!
   name: String!
-}
-
-type Consent {
-  id: ID!
-  type: String!
-  granted: Boolean!
-  updatedAt: String
 }
 
 type Session {
