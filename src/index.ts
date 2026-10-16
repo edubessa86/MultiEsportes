@@ -11,68 +11,217 @@ import { accountResolvers } from './resolvers/accounts.js';
 import { sessionResolvers } from './resolvers/sessions.js';
 import { rankingResolvers } from './resolvers/ranking.js';
 
-console.log("Lendo schema GraphQL...");
-const typeDefs = readFileSync(new URL('./schema.graphql', import.meta.url), 'utf8');
-const doc = parse(typeDefs);
+async function startServer(): Promise<void> {
+  let server: ReturnType<typeof createServer> | undefined;
 
-// Enums: o SDL usa GPS, WEAR_OS...; o banco usa 'gps', 'wear_os'...
-const enums: Record<string, Record<string, string>> = {};
-for (const d of doc.definitions) {
-  if (d.kind === Kind.ENUM_TYPE_DEFINITION)
-    enums[d.name.value] = Object.fromEntries((d.values ?? []).map((v) => [v.name.value, v.name.value.toLowerCase()]));
-}
-if (enums.Language) {
-  enums.Language.PT_BR = 'pt-BR';
-  enums.Language.EN = 'en';
-}
+  try {
+    console.log('Lendo schema GraphQL...');
 
-// Junta os resolvers dos módulos
-const modules = [catalogResolvers, accountResolvers, sessionResolvers, rankingResolvers] as Record<string, any>[];
-const resolvers: Record<string, any> = { ...enums };
-for (const m of modules) for (const [type, fields] of Object.entries(m)) resolvers[type] = { ...(resolvers[type] ?? {}), ...fields };
+    const typeDefs = readFileSync(
+      new URL('./schema.graphql', import.meta.url),
+      'utf8',
+    );
+    const doc = parse(typeDefs);
 
-// Tudo que está no SDL mas ainda não tem resolver responde com um erro claro
-const notImplemented = () => {
-  throw new GraphQLError('Ainda não implementado no MVP.', { extensions: { code: 'NOT_IMPLEMENTED' } });
-};
-const pending: string[] = [];
-for (const d of doc.definitions) {
-  if (d.kind !== Kind.OBJECT_TYPE_DEFINITION || !['Query', 'Mutation'].includes(d.name.value)) continue;
-  for (const f of d.fields ?? []) {
-    resolvers[d.name.value] ??= {};
-    if (!resolvers[d.name.value][f.name.value]) {
-      resolvers[d.name.value][f.name.value] = notImplemented;
-      pending.push(`${d.name.value}.${f.name.value}`);
+    // Converte os valores dos enums para os valores usados pelo banco.
+    const enums: Record<string, Record<string, string>> = {};
+
+    for (const definition of doc.definitions) {
+      if (definition.kind === Kind.ENUM_TYPE_DEFINITION) {
+        enums[definition.name.value] = Object.fromEntries(
+          (definition.values ?? []).map((value) => [
+            value.name.value,
+            value.name.value.toLowerCase(),
+          ]),
+        );
+      }
     }
+
+    if (enums.Language) {
+      if (enums.Language.PT_BR !== undefined) {
+        enums.Language.PT_BR = 'pt-BR';
+      }
+      if (enums.Language.EN !== undefined) {
+        enums.Language.EN = 'en';
+      }
+    }
+
+    const modules = [
+      catalogResolvers,
+      accountResolvers,
+      sessionResolvers,
+      rankingResolvers,
+    ] as Record<string, any>[];
+
+    // Combina os resolvers dos módulos.
+    const mergedResolvers: Record<string, any> = { ...enums };
+
+    for (const moduleResolvers of modules) {
+      for (const [type, fields] of Object.entries(moduleResolvers)) {
+        mergedResolvers[type] = {
+          ...(mergedResolvers[type] ?? {}),
+          ...fields,
+        };
+      }
+    }
+
+    // Registra apenas tipos e campos definidos no schema GraphQL.
+    const declaredTypes = new Map<string, Set<string>>();
+
+    for (const definition of doc.definitions) {
+      if (
+        definition.kind === Kind.OBJECT_TYPE_DEFINITION ||
+        definition.kind === Kind.INTERFACE_TYPE_DEFINITION
+      ) {
+        declaredTypes.set(
+          definition.name.value,
+          new Set((definition.fields ?? []).map((field) => field.name.value)),
+        );
+      } else if (definition.kind === Kind.ENUM_TYPE_DEFINITION) {
+        declaredTypes.set(
+          definition.name.value,
+          new Set((definition.values ?? []).map((value) => value.name.value)),
+        );
+      }
+    }
+
+    const resolvers: Record<string, any> = {};
+
+    for (const [typeName, typeResolvers] of Object.entries(mergedResolvers)) {
+      const declaredFields = declaredTypes.get(typeName);
+
+      // Ignora tipos que não existem no schema.
+      if (!declaredFields) continue;
+
+      const filteredFields: Record<string, any> = {};
+
+      for (const [fieldName, resolver] of Object.entries(typeResolvers)) {
+        if (declaredFields.has(fieldName)) {
+          filteredFields[fieldName] = resolver;
+        }
+      }
+
+      resolvers[typeName] = filteredFields;
+    }
+
+    const notImplemented = () => {
+      throw new GraphQLError('Ainda não implementado no MVP.', {
+        extensions: { code: 'NOT_IMPLEMENTED' },
+      });
+    };
+
+    const pending: string[] = [];
+
+    // Completa campos de Query e Mutation declarados no schema,
+    // mas ainda sem resolver próprio.
+    for (const definition of doc.definitions) {
+      if (
+        definition.kind !== Kind.OBJECT_TYPE_DEFINITION ||
+        !['Query', 'Mutation'].includes(definition.name.value)
+      ) {
+        continue;
+      }
+
+      const typeName = definition.name.value;
+      resolvers[typeName] ??= {};
+
+      for (const field of definition.fields ?? []) {
+        if (!resolvers[typeName][field.name.value]) {
+          resolvers[typeName][field.name.value] = notImplemented;
+          pending.push(`${typeName}.${field.name.value}`);
+        }
+      }
+    }
+
+    console.log('Criando servidor GraphQL Yoga...');
+
+    const yoga = createYoga<{}, Ctx>({
+      schema: createSchema({ typeDefs, resolvers }),
+      graphiql: !config.isProd,
+      cors: false,
+      maskedErrors: config.isProd,
+      context: async ({ request }): Promise<Ctx> => {
+        const authorization = request.headers.get('authorization') ?? '';
+        const match = /^Bearer (.+)$/i.exec(authorization);
+
+        return {
+          userId: match ? await verifyAccessToken(match[1]) : null,
+        };
+      },
+    });
+
+    server = createServer(yoga);
+
+    await new Promise<void>((resolve, reject) => {
+      server!.once('error', reject);
+
+      server!.listen(config.port, config.host, () => {
+        server!.off('error', reject);
+        resolve();
+      });
+    });
+
+    console.log(
+      `API pronta em http://${config.host}:${config.port}/graphql`,
+    );
+
+    const queryCount = Object.keys(resolvers.Query ?? {}).length;
+    const mutationCount = Object.keys(resolvers.Mutation ?? {}).length;
+    const pendingQueries = pending.filter((item) =>
+      item.startsWith('Query.'),
+    ).length;
+    const pendingMutations = pending.filter((item) =>
+      item.startsWith('Mutation.'),
+    ).length;
+
+    console.log(
+      `Implementado: ${queryCount - pendingQueries} queries, ` +
+        `${mutationCount - pendingMutations} mutations ` +
+        `(${pending.length} operações do schema ainda respondem NOT_IMPLEMENTED).`,
+    );
+
+    let shuttingDown = false;
+
+    const shutdown = (signal: string): void => {
+      if (shuttingDown || !server) return;
+      shuttingDown = true;
+
+      console.log(`Recebido ${signal}; encerrando servidor...`);
+
+      server.close((serverError) => {
+        if (serverError) {
+          console.error('Erro ao fechar o servidor HTTP:', serverError);
+        }
+
+        void pool
+          .end()
+          .then(() => {
+            process.exitCode = serverError ? 1 : 0;
+          })
+          .catch((poolError: unknown) => {
+            console.error('Erro ao fechar a conexão com o banco:', poolError);
+            process.exitCode = 1;
+          });
+      });
+    };
+
+    process.once('SIGINT', () => shutdown('SIGINT'));
+    process.once('SIGTERM', () => shutdown('SIGTERM'));
+  } catch (error) {
+    console.error('Falha ao iniciar a API:', error);
+
+    if (server?.listening) {
+      server.close();
+    }
+
+    try {
+      await pool.end();
+    } catch (poolError) {
+      console.error('Falha ao fechar a conexão com o banco:', poolError);
+    }
+
+    process.exitCode = 1;
   }
 }
 
-console.log("Criando servidor GraphQL Yoga...");
-const yoga = createYoga<{}, Ctx>({
-  schema: createSchema({ typeDefs, resolvers }),
-  graphiql: !config.isProd,
-  cors: false,
-  maskedErrors: config.isProd,
-  context: async ({ request }): Promise<Ctx> => {
-    const h = request.headers.get('authorization') ?? '';
-    const m = /^Bearer (.+)$/i.exec(h);
-    return { userId: m ? await verifyAccessToken(m[1]) : null };
-  },
-});
-
-const server = createServer(yoga);
-
-// Utiliza obrigatoriamente a porta fornecida pelo Render (process.env.PORT)
-const PORT = Number(process.env.PORT) || config.port || 4000;
-const HOST = '0.0.0.0';
-
-server.listen(PORT, HOST, () => {
-  console.log(`API pronta em http://${HOST}:${PORT}/graphql`);
-  console.log(`Implementado: ${Object.keys(resolvers.Query).length - pending.filter((p) => p.startsWith('Query.')).length} queries, ` +
-    `${Object.keys(resolvers.Mutation).length - pending.filter((p) => p.startsWith('Mutation.')).length} mutations ` +
-    `(${pending.length} operações do schema ainda respondem NOT_IMPLEMENTED).`);
-});
-
-const shutdown = () => server.close(() => pool.end().finally(() => process.exit(0)));
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+void startServer();
