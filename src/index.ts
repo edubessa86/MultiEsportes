@@ -71,8 +71,40 @@ async function initDb() {
       ON CONFLICT (name) DO NOTHING;
     `);
 
+    // Compatibilidade com o catálogo GraphQL: cria/atualiza o slug dos esportes.
+    await pool.query(`
+      ALTER TABLE sports ADD COLUMN IF NOT EXISTS slug VARCHAR(120);
+      UPDATE sports
+         SET slug = CASE
+           WHEN name = 'Futebol Campo' THEN 'futebol-campo'
+           WHEN name = 'Futebol Salão' THEN 'futebol-salao'
+           WHEN name = 'Futebol Society' THEN 'futebol-society'
+           ELSE lower(regexp_replace(name, '[^a-zA-Z0-9]+', '-', 'g'))
+         END
+       WHERE slug IS NULL OR slug = '';
+      CREATE UNIQUE INDEX IF NOT EXISTS sports_slug_idx ON sports (slug);
+    `);
+
+    // A tabela de modalidades não existia no banco hospedado. Esta migração
+    // cria a estrutura mínima usada pelo catálogo e semeia as modalidades iniciais.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS modalities (
+        id SERIAL PRIMARY KEY,
+        slug VARCHAR(120) NOT NULL UNIQUE,
+        name VARCHAR(255) NOT NULL,
+        sport_id INTEGER NOT NULL REFERENCES sports(id) ON DELETE CASCADE,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO modalities (slug, name, sport_id, is_active, sort_order)
+      SELECT s.slug, s.name, s.id, TRUE, s.sort_order
+        FROM sports s
+      ON CONFLICT (slug) DO NOTHING;
+    `);
+
     const check = await pool.query('SELECT COUNT(*) FROM sports');
-    console.log(`Diagnóstico Base de Dados -> Total de desportos na tabela 'sports': ${check.rows[0].count}`);
+    const modalityCheck = await pool.query('SELECT COUNT(*) FROM modalities');
+    console.log(`Diagnóstico Base de Dados -> Total de esportes: ${check.rows[0].count}; modalidades: ${modalityCheck.rows[0].count}`);
 
   } catch (error) {
     console.error("Erro ao inicializar as tabelas na base de dados:", error);
