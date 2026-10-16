@@ -15,20 +15,23 @@ import { rankingResolvers } from './resolvers/ranking.js';
 const typeDefs = readFileSync(new URL('./schema.graphql', import.meta.url), 'utf8');
 const doc = parse(typeDefs);
 
-// Enums: o SDL usa GPS, WEAR_OS...; o banco usa 'gps', 'wear_os'... (o app só vê o SDL)
+// Enums: o SDL usa GPS, WEAR_OS...; o banco usa 'gps', 'wear_os'...
 const enums: Record<string, Record<string, string>> = {};
 for (const d of doc.definitions) {
   if (d.kind === Kind.ENUM_TYPE_DEFINITION)
     enums[d.name.value] = Object.fromEntries((d.values ?? []).map((v) => [v.name.value, v.name.value.toLowerCase()]));
 }
-enums.Language = { PT_BR: 'pt-BR', EN: 'en' };
+if (enums.Language) {
+  enums.Language.PT_BR = 'pt-BR';
+  enums.Language.EN = 'en';
+}
 
 // Junta os resolvers dos módulos
 const modules = [catalogResolvers, accountResolvers, sessionResolvers, rankingResolvers] as Record<string, any>[];
 const resolvers: Record<string, any> = { ...enums };
 for (const m of modules) for (const [type, fields] of Object.entries(m)) resolvers[type] = { ...(resolvers[type] ?? {}), ...fields };
 
-// Tudo que está no SDL mas ainda não tem resolver responde com um erro claro (e não com null)
+// Tudo que está no SDL mas ainda não tem resolver responde com um erro claro
 const notImplemented = () => {
   throw new GraphQLError('Ainda não implementado no MVP.', { extensions: { code: 'NOT_IMPLEMENTED' } });
 };
@@ -46,9 +49,9 @@ for (const d of doc.definitions) {
 
 const yoga = createYoga<{}, Ctx>({
   schema: createSchema({ typeDefs, resolvers }),
-  graphiql: !config.isProd,        // interface de testes em /graphql (só fora de produção)
-  cors: false,                    // app nativo não precisa de CORS
-  maskedErrors: config.isProd,    // em dev mostra a mensagem real do erro
+  graphiql: !config.isProd,
+  cors: false,
+  maskedErrors: config.isProd,
   context: async ({ request }): Promise<Ctx> => {
     const h = request.headers.get('authorization') ?? '';
     const m = /^Bearer (.+)$/i.exec(h);
