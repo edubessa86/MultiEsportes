@@ -6,6 +6,7 @@ type Query {
   seasons: [Season!]!
   catalog: Catalog!
   me: User
+  viewer: User
   mySessions(limit: Int, offset: Int): [Session!]!
   ranking(sportId: ID!, period: String!): [RankingEntry!]!
 }
