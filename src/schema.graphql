@@ -2,6 +2,7 @@ type Query {
   ping: String
   sports: [Sport!]!
   modalities: [Modality!]!
+  modality(id: ID!): Modality
   catalog: Catalog!
   me: User
   mySessions(limit: Int, offset: Int): [Session!]!
