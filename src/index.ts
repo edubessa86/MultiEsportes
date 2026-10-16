@@ -12,37 +12,74 @@ import { sessionResolvers } from './resolvers/sessions.js';
 import { rankingResolvers } from './resolvers/ranking.js';
 
 // O contrato da API está na mesma pasta src/
-const typeDefs = readFileSync(new URL('./schema.graphql', import.meta.url), 'utf8');
+const typeDefs = readFileSync(
+  new URL('./schema.graphql', import.meta.url),
+  'utf8',
+);
+
 const doc = parse(typeDefs);
 
 // Enums: o SDL usa GPS, WEAR_OS...; o banco usa 'gps', 'wear_os'...
 const enums: Record<string, Record<string, string>> = {};
-for (const d of doc.definitions) {
-  if (d.kind === Kind.ENUM_TYPE_DEFINITION)
-    enums[d.name.value] = Object.fromEntries((d.values ?? []).map((v) => [v.name.value, v.name.value.toLowerCase()]));
+
+for (const definition of doc.definitions) {
+  if (definition.kind === Kind.ENUM_TYPE_DEFINITION) {
+    enums[definition.name.value] = Object.fromEntries(
+      (definition.values ?? []).map((value) => [
+        value.name.value,
+        value.name.value.toLowerCase(),
+      ]),
+    );
+  }
 }
+
 if (enums.Language) {
   enums.Language.PT_BR = 'pt-BR';
   enums.Language.EN = 'en';
 }
 
-// Junta os resolvers dos módulos
-const modules = [catalogResolvers, accountResolvers, sessionResolvers, rankingResolvers] as Record<string, any>[];
-const resolvers: Record<string, any> = { ...enums };
-for (const m of modules) for (const [type, fields] of Object.entries(m)) resolvers[type] = { ...(resolvers[type] ?? {}), ...fields };
+// Junta os resolvers dos módulos.
+const modules = [
+  catalogResolvers,
+  accountResolvers,
+  sessionResolvers,
+  rankingResolvers,
+] as Record<string, any>[];
 
-// Tudo que está no SDL mas ainda não tem resolver responde com um erro claro
+const resolvers: Record<string, any> = { ...enums };
+
+for (const moduleResolvers of modules) {
+  for (const [type, fields] of Object.entries(moduleResolvers)) {
+    resolvers[type] = {
+      ...(resolvers[type] ?? {}),
+      ...fields,
+    };
+  }
+}
+
+// Tudo que está no SDL mas ainda não tem resolver responde com um erro claro.
 const notImplemented = () => {
-  throw new GraphQLError('Ainda não implementado no MVP.', { extensions: { code: 'NOT_IMPLEMENTED' } });
+  throw new GraphQLError('Ainda não implementado no MVP.', {
+    extensions: { code: 'NOT_IMPLEMENTED' },
+  });
 };
+
 const pending: string[] = [];
-for (const d of doc.definitions) {
-  if (d.kind !== Kind.OBJECT_TYPE_DEFINITION || !['Query', 'Mutation'].includes(d.name.value)) continue;
-  for (const f of d.fields ?? []) {
-    resolvers[d.name.value] ??= {};
-    if (!resolvers[d.name.value][f.name.value]) {
-      resolvers[d.name.value][f.name.value] = notImplemented;
-      pending.push(`${d.name.value}.${f.name.value}`);
+
+for (const definition of doc.definitions) {
+  if (
+    definition.kind !== Kind.OBJECT_TYPE_DEFINITION ||
+    !['Query', 'Mutation'].includes(definition.name.value)
+  ) {
+    continue;
+  }
+
+  for (const field of definition.fields ?? []) {
+    resolvers[definition.name.value] ??= {};
+
+    if (!resolvers[definition.name.value][field.name.value]) {
+      resolvers[definition.name.value][field.name.value] = notImplemented;
+      pending.push(`${definition.name.value}.${field.name.value}`);
     }
   }
 }
@@ -53,20 +90,41 @@ const yoga = createYoga<{}, Ctx>({
   cors: false,
   maskedErrors: config.isProd,
   context: async ({ request }): Promise<Ctx> => {
-    const h = request.headers.get('authorization') ?? '';
-    const m = /^Bearer (.+)$/i.exec(h);
-    return { userId: m ? await verifyAccessToken(m[1]) : null };
+    const authorization = request.headers.get('authorization') ?? '';
+    const match = /^Bearer (.+)$/i.exec(authorization);
+
+    return {
+      userId: match ? await verifyAccessToken(match[1]) : null,
+    };
   },
 });
 
 const server = createServer(yoga);
+
 server.listen(config.port, config.host, () => {
   console.log(`API pronta em http://${config.host}:${config.port}/graphql`);
-  console.log(`Implementado: ${Object.keys(resolvers.Query).length - pending.filter((p) => p.startsWith('Query.')).length} queries, ` +
-    `${Object.keys(resolvers.Mutation).length - pending.filter((p) => p.startsWith('Mutation.')).length} mutations ` +
-    `(${pending.length} operações do schema ainda respondem NOT_IMPLEMENTED).`);
+
+  const queryCount = Object.keys(resolvers.Query ?? {}).length;
+  const mutationCount = Object.keys(resolvers.Mutation ?? {}).length;
+  const pendingQueries = pending.filter((operation) =>
+    operation.startsWith('Query.'),
+  ).length;
+  const pendingMutations = pending.filter((operation) =>
+    operation.startsWith('Mutation.'),
+  ).length;
+
+  console.log(
+    `Implementado: ${queryCount - pendingQueries} queries, ` +
+      `${mutationCount - pendingMutations} mutations ` +
+      `(${pending.length} operações do schema ainda respondem NOT_IMPLEMENTED).`,
+  );
 });
 
-const shutdown = () => server.close(() => pool.end().finally(() => process.exit(0)));
+const shutdown = () => {
+  server.close(() => {
+    void pool.end().finally(() => process.exit(0));
+  });
+};
+
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
