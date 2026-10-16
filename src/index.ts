@@ -11,7 +11,7 @@ import { accountResolvers } from './resolvers/accounts.js';
 import { sessionResolvers } from './resolvers/sessions.js';
 import { rankingResolvers } from './resolvers/ranking.js';
 
-// O contrato da API é o schema.graphql posicionado dentro da pasta src/
+// O contrato da API está na mesma pasta src/
 const typeDefs = readFileSync(new URL('./schema.graphql', import.meta.url), 'utf8');
 const doc = parse(typeDefs);
 
