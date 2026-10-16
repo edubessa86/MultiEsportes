@@ -11,8 +11,8 @@ import { accountResolvers } from './resolvers/accounts.js';
 import { sessionResolvers } from './resolvers/sessions.js';
 import { rankingResolvers } from './resolvers/ranking.js';
 
-// O contrato da API é o mesmo SDL entregue em /graphql/schema.graphql
-const typeDefs = readFileSync(new URL('../../graphql/schema.graphql', import.meta.url), 'utf8');
+// O contrato da API é o schema.graphql posicionado dentro da pasta src/
+const typeDefs = readFileSync(new URL('./schema.graphql', import.meta.url), 'utf8');
 const doc = parse(typeDefs);
 
 // Enums: o SDL usa GPS, WEAR_OS...; o banco usa 'gps', 'wear_os'... (o app só vê o SDL)
@@ -46,7 +46,7 @@ for (const d of doc.definitions) {
 
 const yoga = createYoga<{}, Ctx>({
   schema: createSchema({ typeDefs, resolvers }),
-  graphiql: !config.isProd,       // interface de testes em /graphql (só fora de produção)
+  graphiql: !config.isProd,        // interface de testes em /graphql (só fora de produção)
   cors: false,                    // app nativo não precisa de CORS
   maskedErrors: config.isProd,    // em dev mostra a mensagem real do erro
   context: async ({ request }): Promise<Ctx> => {
