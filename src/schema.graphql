@@ -10,6 +10,7 @@ type Query {
   user(id: ID!): User
   mySessions(limit: Int, offset: Int): [Session!]!
   ranking(sportId: ID!, period: String!): [RankingEntry!]!
+  myConsents: [Consent!]!
 }
 
 type Mutation {
@@ -47,6 +48,13 @@ type User {
   id: ID!
   email: String!
   name: String!
+}
+
+type Consent {
+  id: ID!
+  type: String!
+  granted: Boolean!
+  updatedAt: String
 }
 
 type Session {
