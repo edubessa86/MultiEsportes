@@ -21,10 +21,8 @@ async function startServer(): Promise<void> {
       new URL('./schema.graphql', import.meta.url),
       'utf8',
     );
-
     const doc = parse(typeDefs);
 
-    // Converte valores de enums GraphQL para os valores usados no banco.
     const enums: Record<string, Record<string, string>> = {};
 
     for (const definition of doc.definitions) {
@@ -61,58 +59,6 @@ async function startServer(): Promise<void> {
       }
     }
 
-    // Mapeia tipos e campos existentes no schema.
-    const objectFields: Record<string, Set<string>> = {};
-    const otherTypes = new Set<string>(); // enums, scalars, interfaces, unions
-
-    for (const definition of doc.definitions) {
-      if (
-        definition.kind === Kind.OBJECT_TYPE_DEFINITION ||
-        definition.kind === Kind.OBJECT_TYPE_EXTENSION
-      ) {
-        const name = definition.name.value;
-        objectFields[name] ??= new Set();
-        for (const field of definition.fields ?? []) {
-          objectFields[name].add(field.name.value);
-        }
-      } else if (
-        definition.kind === Kind.ENUM_TYPE_DEFINITION ||
-        definition.kind === Kind.SCALAR_TYPE_DEFINITION ||
-        definition.kind === Kind.INTERFACE_TYPE_DEFINITION ||
-        definition.kind === Kind.UNION_TYPE_DEFINITION
-      ) {
-        otherTypes.add(definition.name.value);
-      }
-    }
-
-    // Remove resolvers que não têm correspondente no schema, para não
-    // derrubar a API no boot. Cada remoção é registrada no log.
-    const orphans: string[] = [];
-
-    for (const [type, fields] of Object.entries(resolvers)) {
-      if (otherTypes.has(type)) continue;
-
-      if (!objectFields[type]) {
-        orphans.push(type);
-        delete resolvers[type];
-        continue;
-      }
-
-      for (const field of Object.keys(fields)) {
-        if (field.startsWith('__')) continue;
-        if (!objectFields[type].has(field)) {
-          orphans.push(`${type}.${field}`);
-          delete fields[field];
-        }
-      }
-    }
-
-    if (orphans.length > 0) {
-      console.warn(
-        `Resolvers ignorados (não existem no schema): ${orphans.join(', ')}`,
-      );
-    }
-
     const notImplemented = () => {
       throw new GraphQLError('Ainda não implementado no MVP.', {
         extensions: { code: 'NOT_IMPLEMENTED' },
@@ -139,9 +85,93 @@ async function startServer(): Promise<void> {
       }
     }
 
-    console.log('Criando servidor GraphQL Yoga...');
-
     const yoga = createYoga<{}, Ctx>({
       schema: createSchema({ typeDefs, resolvers }),
       graphiql: !config.isProd,
       cors: false,
+      maskedErrors: config.isProd,
+      context: async ({ request }): Promise<Ctx> => {
+        const authorization = request.headers.get('authorization') ?? '';
+        const match = /^Bearer (.+)$/i.exec(authorization);
+
+        return {
+          userId: match ? await verifyAccessToken(match[1]) : null,
+        };
+      },
+    });
+
+    server = createServer(yoga);
+
+    await new Promise<void>((resolve, reject) => {
+      server!.once('error', reject);
+
+      server!.listen(config.port, config.host, () => {
+        server!.off('error', reject);
+        resolve();
+      });
+    });
+
+    console.log(
+      `API pronta em http://${config.host}:${config.port}/graphql`,
+    );
+
+    const queryCount = Object.keys(resolvers.Query ?? {}).length;
+    const mutationCount = Object.keys(resolvers.Mutation ?? {}).length;
+    const pendingQueries = pending.filter((item) =>
+      item.startsWith('Query.'),
+    ).length;
+    const pendingMutations = pending.filter((item) =>
+      item.startsWith('Mutation.'),
+    ).length;
+
+    console.log(
+      `Implementado: ${queryCount - pendingQueries} queries, ` +
+        `${mutationCount - pendingMutations} mutations ` +
+        `(${pending.length} operações do schema ainda respondem NOT_IMPLEMENTED).`,
+    );
+
+    let shuttingDown = false;
+
+    const shutdown = (signal: string): void => {
+      if (shuttingDown || !server) return;
+      shuttingDown = true;
+
+      console.log(`Recebido ${signal}; encerrando servidor...`);
+
+      server.close((serverError) => {
+        if (serverError) {
+          console.error('Erro ao fechar o servidor HTTP:', serverError);
+        }
+
+        void pool
+          .end()
+          .then(() => {
+            process.exitCode = serverError ? 1 : 0;
+          })
+          .catch((poolError: unknown) => {
+            console.error('Erro ao fechar a conexão com o banco:', poolError);
+            process.exitCode = 1;
+          });
+      });
+    };
+
+    process.once('SIGINT', () => shutdown('SIGINT'));
+    process.once('SIGTERM', () => shutdown('SIGTERM'));
+  } catch (error) {
+    console.error('Falha ao iniciar a API:', error);
+
+    if (server?.listening) {
+      server.close();
+    }
+
+    try {
+      await pool.end();
+    } catch (poolError) {
+      console.error('Falha ao fechar a conexão com o banco:', poolError);
+    }
+
+    process.exitCode = 1;
+  }
+}
+
+void startServer();
