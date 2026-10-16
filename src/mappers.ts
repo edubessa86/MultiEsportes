@@ -9,7 +9,8 @@ const label = (r: any, base: string, lang: Lang) =>
 
 export function mapSport(r: any, lang: unknown) {
   const l = pickLang(lang);
-  return { id: r.id, slug: r.slug, name: label(r, 'name', l), icon: r.icon, _lang: l };
+  const resolvedName = label(r, 'name', l) ?? r.slug ?? (r.id != null ? `Esporte ${r.id}` : 'Esporte');
+  return { id: r.id, slug: r.slug ?? null, name: resolvedName, icon: r.icon ?? null, _lang: l };
 }
 
 export function mapModality(r: any, lang: unknown) {
