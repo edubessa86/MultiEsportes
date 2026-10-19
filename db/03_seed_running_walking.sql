@@ -1,7 +1,7 @@
 -- MultiEsportes: catálogo inicial de Corrida e Caminhada.
 -- Executar uma vez após db/02_seed_catalog.sql.
 -- Idempotente: pode ser executado novamente sem duplicar esportes/modalidades.
--- Mantém ativos somente Futebol de Campo, Corrida e Caminhada, conforme decisão do produto.
+-- Organiza Corrida e Caminhada no grupo Livre e mantém ativas as modalidades de futebol aprovadas.
 -- Pré-requisito: executar db/03a_add_outdoor_surface.sql em uma transação separada
 -- e confirmar o commit antes de executar este arquivo.
 
@@ -9,8 +9,7 @@ BEGIN;
 
 INSERT INTO sports (slug, name_pt, name_en, icon, sort_order)
 VALUES
-  ('running', 'Corrida', 'Running', '🏃', 5),
-  ('walking', 'Caminhada', 'Walking', '🚶', 6)
+  ('free', 'Livre', 'Outdoor activities', '🏃', 2)
 ON CONFLICT (slug) DO UPDATE
 SET name_pt = EXCLUDED.name_pt,
     name_en = EXCLUDED.name_en,
@@ -29,9 +28,9 @@ SELECT s.id, v.slug, v.name_pt, v.name_en, 1, 1,
        NULL, NULL, 'outdoor'::surface_kind, 'time'::period_kind, 1,
        1, 'activity', true, true, true, 1, v.rules::jsonb, true, v.sort_order
 FROM (VALUES
-  ('running', 'running', 'Corrida', 'Running',
+  ('free', 'running', 'Corrida', 'Running',
    '{"activityType":"running","distanceUnit":"km","paceUnit":"min/km","speedUnit":"km/h","gpsTracking":true,"autoPauseSupported":true,"splitsKm":true,"heartRateOptional":true}', 20),
-  ('walking', 'walking', 'Caminhada', 'Walking',
+  ('free', 'walking', 'Caminhada', 'Walking',
    '{"activityType":"walking","distanceUnit":"km","paceUnit":"min/km","speedUnit":"km/h","gpsTracking":true,"autoPauseSupported":true,"splitsKm":true,"heartRateOptional":true}', 21)
 ) AS v(sport_slug, slug, name_pt, name_en, rules, sort_order)
 JOIN sports s ON s.slug = v.sport_slug
@@ -94,8 +93,13 @@ SET is_primary = EXCLUDED.is_primary,
     reference_value = NULL,
     plausible_max_override = NULL;
 
--- Deixa disponíveis somente as modalidades aprovadas para esta fase do MVP.
+-- Mantém ativas as três modalidades de futebol e as duas atividades livres.
 UPDATE modalities
-SET is_active = (slug IN ('football_field', 'running', 'walking'));
+SET is_active = (slug IN ('football_field', 'football_society', 'futsal', 'running', 'walking'));
+
+-- Garante que corrida e caminhada sejam exibidas sob o grupo Livre.
+UPDATE modalities
+SET sport_id = (SELECT id FROM sports WHERE slug = 'free')
+WHERE slug IN ('running', 'walking');
 
 COMMIT;
