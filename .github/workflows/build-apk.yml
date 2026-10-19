@@ -1,0 +1,30 @@
+# Confere o servidor no Render e o banco no Neon SEM criar nem alterar dados.
+# Como usar: GitHub > Actions > "Testar servidor na nuvem" > Run workflow.
+name: Testar servidor na nuvem
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: Endereço do servidor
+        default: https://multiesportes.onrender.com
+        required: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - name: Teste de fumaça (somente leitura)
+        env:
+          API_URL: ${{ inputs.api_url }}
+        run: npx tsx scripts/smoke.ts
