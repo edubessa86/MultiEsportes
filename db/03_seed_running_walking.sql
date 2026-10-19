@@ -2,10 +2,8 @@
 -- Executar uma vez após db/02_seed_catalog.sql.
 -- Idempotente: pode ser executado novamente sem duplicar esportes/modalidades.
 -- Mantém ativos somente Futebol de Campo, Corrida e Caminhada, conforme decisão do produto.
--- O enum original foi criado para esportes de quadra/campo; adicionamos 'outdoor'
--- para não classificar corrida/caminhada incorretamente como grama.
--- Esta instrução fica fora da transação porque o PostgreSQL exige commit antes de usar novo enum value.
-ALTER TYPE surface_kind ADD VALUE IF NOT EXISTS 'outdoor';
+-- Pré-requisito: executar db/03a_add_outdoor_surface.sql em uma transação separada
+-- e confirmar o commit antes de executar este arquivo.
 
 BEGIN;
 
