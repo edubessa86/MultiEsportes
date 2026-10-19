@@ -8,13 +8,29 @@ import { fmtDate, fmtDuration, num, reasonLabel, statusLabel } from '../../lib/f
 import { listPending, removePending, type PendingItem } from '../../lib/queue';
 import { colors, space } from '../../lib/theme';
 
+type SessionMetric = { metric: { code: string; name: string; unit: string }; value: string | number };
 type Item = {
   id: string; startedAt: string; durationSeconds: number | null; status: string; score: string | null;
-  invalidReasons: string[]; xpEarned: number; modality: { name: string };
+  invalidReasons: string[]; xpEarned: number; source: string; metrics: SessionMetric[]; modality: { name: string };
 };
 
 const QUERY = `query($a: String){ mySessions(first: 20, after: $a){ totalCount pageInfo{ hasNextPage endCursor }
-  edges{ node{ id startedAt durationSeconds status score invalidReasons xpEarned modality{ name } } } } }`;
+  edges{ node{ id startedAt durationSeconds status score invalidReasons xpEarned source modality{ name } metrics{ value metric{ code name unit } } } } } }`;
+
+function metricLabel(m: SessionMetric): string {
+  const value = Number(m.value);
+  if (!Number.isFinite(value)) return `${m.metric.name}: —`;
+  if (m.metric.code === 'distance_total_m') return `Distância: ${(value / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`;
+  if (m.metric.code === 'avg_pace_min_km' || m.metric.code === 'best_pace_min_km') {
+    const mins = Math.floor(value);
+    const secs = Math.round((value - mins) * 60);
+    const pace = `${mins}:${String(secs).padStart(2, '0')}/km`;
+    return `${m.metric.name}: ${pace}`;
+  }
+  if (m.metric.code === 'elapsed_time_s' || m.metric.code === 'active_time_s') return `${m.metric.name}: ${fmtDuration(value)}`;
+  if (m.metric.code === 'heart_rate_avg' || m.metric.code === 'heart_rate_max') return `${m.metric.name}: ${num(value, 0)} bpm`;
+  return `${m.metric.name}: ${num(value, 1)} ${m.metric.unit}`.trim();
+}
 
 export default function History() {
   const { user } = useAuth();
@@ -80,9 +96,12 @@ export default function History() {
             </Text>
           </View>
           <Muted>
-            {fmtDate(s.startedAt)} · {s.durationSeconds ? fmtDuration(s.durationSeconds) : '—'}
+            {fmtDate(s.startedAt)} · {s.durationSeconds != null ? fmtDuration(s.durationSeconds) : '—'}
             {s.score ? ` · score ${num(s.score)}` : ''}{s.xpEarned ? ` · +${s.xpEarned} XP` : ''}
           </Muted>
+          {s.metrics?.filter((m) => ['distance_total_m', 'avg_pace_min_km', 'avg_speed_kmh', 'active_time_s', 'heart_rate_avg'].includes(m.metric.code)).map((m) => (
+            <Muted key={m.metric.code}>{metricLabel(m)}</Muted>
+          ))}
           {s.invalidReasons.length > 0 && <Muted style={{ color: colors.danger }}>Motivo: {s.invalidReasons.map(reasonLabel).join('; ')}</Muted>}
         </Card>
       ))}

@@ -58,8 +58,35 @@ export function computeGpsMetrics(raw: Pt[]): GpsResult {
   });
 
   const distance = segs.reduce((s, x) => s + x.d, 0);
-  const elapsed = pts.length > 1 ? (pts[pts.length - 1].t - pts[0].t) / 1000 : 0;
+  // Usa apenas intervalos aceitos pelo filtro de GPS; lacunas de sinal não contam como movimento.
+  const elapsed = segs.reduce((s, x) => s + x.dt, 0);
   const maxV = vs.length ? Math.max(...vs) : 0;
+
+  // Melhor pace por janela móvel de 1 km (min/km), não por um pico instantâneo de GPS.
+  // Calcula o tempo proporcional no último segmento para medir exatamente 1.000 m.
+  let bestPaceMinKm: number | null = null;
+  if (distance >= 1000) {
+    for (let start = 0; start < segs.length; start++) {
+      if (segs[start].d <= 0) continue;
+      let covered = 0;
+      let seconds = 0;
+      for (let end = start; end < segs.length && covered < 1000; end++) {
+        const seg = segs[end];
+        if (covered + seg.d >= 1000 && seg.d > 0) {
+          const fraction = (1000 - covered) / seg.d;
+          seconds += seg.dt * fraction;
+          covered = 1000;
+        } else {
+          covered += seg.d;
+          seconds += seg.dt;
+        }
+      }
+      if (covered >= 1000 && seconds > 0) {
+        const pace = seconds / 60; // exatamente 1 km
+        if (bestPaceMinKm == null || pace < bestPaceMinKm) bestPaceMinKm = pace;
+      }
+    }
+  }
 
   let hid = 0, active = 0, sprints = 0, accels = 0;
   let inSprint = false, sprintT = 0, inAccel = false;
@@ -85,16 +112,21 @@ export function computeGpsMetrics(raw: Pt[]): GpsResult {
   if (inSprint && sprintT >= SPRINT_MIN_S) sprints++;
 
   const r1 = (n: number) => Math.round(n * 10) / 10;
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const metrics: Record<string, number> = {
+    distance_total_m: Math.round(distance),
+    avg_speed_kmh: elapsed > 0 ? r1((distance / elapsed) * 3.6) : 0,
+    max_speed_kmh: r1(maxV * 3.6),
+    elapsed_time_s: Math.round(elapsed),
+    avg_pace_min_km: distance > 0 ? r2(elapsed / 60 / (distance / 1000)) : 0,
+    sprint_count: sprints,
+    high_intensity_distance_m: Math.round(hid),
+    accel_count: accels,
+    active_time_s: Math.round(active),
+  };
+  if (bestPaceMinKm != null) metrics.best_pace_min_km = r2(bestPaceMinKm);
   return {
-    metrics: {
-      distance_total_m: Math.round(distance),
-      avg_speed_kmh: elapsed > 0 ? r1((distance / elapsed) * 3.6) : 0,
-      max_speed_kmh: r1(maxV * 3.6),
-      sprint_count: sprints,
-      high_intensity_distance_m: Math.round(hid),
-      accel_count: accels,
-      active_time_s: Math.round(active),
-    },
+    metrics,
     usedPoints: pts.length,
     discardedPoints: raw.length - pts.length + glitches,
     // pouca trilha = GPS não funcionou direito; o app avisa antes de enviar

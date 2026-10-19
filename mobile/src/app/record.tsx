@@ -17,8 +17,9 @@ type Phase = 'starting' | 'recording' | 'review' | 'saving' | 'done' | 'error';
 const MAX_STORED_POINTS = 4000; // limite do armazenamento local (AsyncStorage) e do envio
 
 const LABELS: Record<string, string> = {
-  distance_total_m: 'Distância (m)', max_speed_kmh: 'Vel. máxima (km/h)', sprint_count: 'Sprints', high_intensity_distance_m: 'Alta intensidade (m)',
-  accel_count: 'Acelerações', avg_speed_kmh: 'Vel. média (km/h)', active_time_s: 'Tempo ativo (s)', player_load: 'Carga', jump_count: 'Saltos',
+  distance_total_m: 'Distância (m)', avg_pace_min_km: 'Ritmo médio (min/km)', best_pace_min_km: 'Melhor ritmo (min/km)',
+  elapsed_time_s: 'Duração total (s)', max_speed_kmh: 'Vel. máxima (km/h)', sprint_count: 'Sprints', high_intensity_distance_m: 'Alta intensidade (m)',
+  accel_count: 'Acelerações', avg_speed_kmh: 'Vel. média (km/h)', active_time_s: 'Tempo ativo (s)', heart_rate_avg: 'FC média (bpm)', heart_rate_max: 'FC máxima (bpm)', player_load: 'Carga', jump_count: 'Saltos',
   jump_height_avg_cm: 'Altura média salto (cm)',
 };
 
@@ -279,10 +280,10 @@ export default function Record() {
       </Card>
 
       {!hasEnoughData && (
-        <Banner kind="error">
+        <Banner kind="warn">
           {isGps
-            ? 'Poucos dados de GPS (sinal fraco ou treino muito parado). Para manter o ranking confiável, esta sessão não pode ser enviada. Descarte e tente de novo ao ar livre.'
-            : 'Poucos dados dos sensores. Mantenha o app aberto com a tela ligada durante o treino. Esta sessão não pode ser enviada.'}
+            ? 'O GPS registrou poucos dados. Você ainda pode salvar o treino; a distância e o ritmo podem estar incompletos e a sessão pode não contar para o ranking.'
+            : 'Os sensores registraram poucos dados. Você ainda pode salvar o treino; as métricas de movimento podem estar incompletas e a sessão pode não contar para o ranking.'}
         </Banner>
       )}
       {short && hasEnoughData && (
@@ -311,7 +312,7 @@ export default function Record() {
         )}
       </Card>
 
-      <Button title="Salvar e enviar" onPress={save} disabled={!hasEnoughData} loading={phase === 'saving'} />
+      <Button title="Salvar treino" onPress={save} loading={phase === 'saving'} />
       <Button
         title="Descartar"
         variant="secondary"
