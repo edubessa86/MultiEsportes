@@ -18,9 +18,10 @@ const typeDefs = readFileSync(
   new URL('./schema.graphql', import.meta.url),
   'utf8',
 );
+
 const doc = parse(typeDefs);
 
-// O SDL usa enums como GPS e WEAR_OS; internamente, o banco usa gps e wear_os.
+// O SDL usa enums como GPS e WEAR_OS; o banco usa gps e wear_os.
 const enums: Record<string, Record<string, string>> = {};
 
 for (const definition of doc.definitions) {
@@ -58,7 +59,7 @@ for (const moduleResolvers of modules) {
   }
 }
 
-// Operações declaradas no schema que não têm resolver retornam NOT_IMPLEMENTED.
+// Operações do schema sem resolver retornam NOT_IMPLEMENTED.
 const notImplemented = () => {
   throw new GraphQLError('Ainda não implementado no MVP.', {
     extensions: { code: 'NOT_IMPLEMENTED' },
@@ -136,4 +137,81 @@ async function initDb(): Promise<void> {
     );
 
     INSERT INTO modalities (slug, name, sport_id, is_active, sort_order)
-    SELECT s.slug, s.name, s.id
+    SELECT s.slug, s.name, s.id, TRUE, s.sort_order
+    FROM sports s
+    ON CONFLICT (slug) DO NOTHING;
+  `);
+
+  const sportsCount = await pool.query(
+    'SELECT COUNT(*)::int AS count FROM sports',
+  );
+  const modalitiesCount = await pool.query(
+    'SELECT COUNT(*)::int AS count FROM modalities',
+  );
+
+  console.log(
+    `Diagnóstico Base de Dados -> Total de esportes: ${sportsCount.rows[0].count}; ` +
+      `modalidades: ${modalitiesCount.rows[0].count}`,
+  );
+}
+
+console.log('Criando servidor GraphQL Yoga...');
+
+const yoga = createYoga<{}, Ctx>({
+  schema: createSchema({
+    typeDefs,
+    resolvers,
+    resolverValidationOptions: {
+      requireResolversToMatchSchema: 'ignore',
+    },
+  }),
+  graphiql: !config.isProd,
+  cors: true,
+  maskedErrors: config.isProd,
+  context: async ({ request }): Promise<Ctx> => {
+    const authorization = request.headers.get('authorization') ?? '';
+    const match = /^Bearer (.+)$/i.exec(authorization);
+
+    return {
+      userId: match ? await verifyAccessToken(match[1]) : null,
+    };
+  },
+});
+
+const server = createServer(yoga);
+const PORT = Number(process.env.PORT ?? 4000);
+const HOST = '0.0.0.0';
+
+async function start(): Promise<void> {
+  await initDb();
+
+  server.listen(PORT, HOST, () => {
+    const queryCount =
+      Object.keys(resolvers.Query ?? {}).length -
+      pending.filter((operation) => operation.startsWith('Query.')).length;
+
+    const mutationCount =
+      Object.keys(resolvers.Mutation ?? {}).length -
+      pending.filter((operation) => operation.startsWith('Mutation.')).length;
+
+    console.log(`API pronta em http://${HOST}:${PORT}/graphql`);
+    console.log(
+      `Implementado: ${queryCount} queries, ${mutationCount} mutations ` +
+        `(${pending.length} operações do schema ainda respondem NOT_IMPLEMENTED).`,
+    );
+  });
+}
+
+const shutdown = (): void => {
+  server.close(() => {
+    void pool.end().finally(() => process.exit(0));
+  });
+};
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
+void start().catch((error) => {
+  console.error('Falha ao iniciar a API:', error);
+  process.exit(1);
+});
