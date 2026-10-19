@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, RefreshControl, Text, View } from 'react-native';
 import { Banner, Button, Card, Heading, Muted, Screen, Title } from '../../components/ui';
@@ -103,6 +103,7 @@ export default function History() {
             <Muted key={m.metric.code}>{metricLabel(m)}</Muted>
           ))}
           {s.invalidReasons.length > 0 && <Muted style={{ color: colors.danger }}>Motivo: {s.invalidReasons.map(reasonLabel).join('; ')}</Muted>}
+          <Button title="Ver relatório detalhado" variant="secondary" onPress={() => router.push({ pathname: '/session-detail', params: { id: s.id } })} />
         </Card>
       ))}
       {more && <Button title="Carregar mais" variant="secondary" onPress={() => load(false)} loading={loading} style={{ marginTop: space.sm }} />}
