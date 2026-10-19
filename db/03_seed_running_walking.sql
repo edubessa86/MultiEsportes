@@ -27,9 +27,9 @@ SELECT s.id, v.slug, v.name_pt, v.name_en, 1, 1,
        NULL, NULL, 'grass'::surface_kind, 'time'::period_kind, 1,
        1, 'activity', true, true, true, 1, v.rules::jsonb, true, v.sort_order
 FROM (VALUES
-  ('running', 'Corrida', 'Running',
+  ('running', 'running', 'Corrida', 'Running',
    '{"activityType":"running","distanceUnit":"km","paceUnit":"min/km","speedUnit":"km/h","gpsTracking":true,"autoPauseSupported":true,"splitsKm":true,"heartRateOptional":true}', 20),
-  ('walking', 'Caminhada', 'Walking',
+  ('walking', 'walking', 'Caminhada', 'Walking',
    '{"activityType":"walking","distanceUnit":"km","paceUnit":"min/km","speedUnit":"km/h","gpsTracking":true,"autoPauseSupported":true,"splitsKm":true,"heartRateOptional":true}', 21)
 ) AS v(sport_slug, slug, name_pt, name_en, rules, sort_order)
 JOIN sports s ON s.slug = v.sport_slug
