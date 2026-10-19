@@ -48,6 +48,9 @@ check('3 pontos "teletransportados" descartados', r.discardedPoints >= 3, `${r.d
 check('distância alta intensidade ≈ 190 m (±25%)', Math.abs(m.high_intensity_distance_m - 192) / 192 < 0.25, `${m.high_intensity_distance_m} m`);
 check('tempo ativo ≈ 1440 s (±5%)', Math.abs(m.active_time_s - 1440) / 1440 < 0.05, `${m.active_time_s} s`);
 check('velocidade média ≈ 7,3 km/h (±8%)', Math.abs(m.avg_speed_kmh - 7.26) / 7.26 < 0.08, `${m.avg_speed_kmh} km/h`);
+check('pace médio coerente com distância e duração', m.avg_pace_min_km > 0 && Math.abs(m.avg_pace_min_km - (m.elapsed_time_s / 60 / (m.distance_total_m / 1000))) < 0.03, `${m.avg_pace_min_km} min/km`);
+check('melhor pace por 1 km só existe com trilha suficiente', typeof m.best_pace_min_km === 'number' && m.best_pace_min_km > 0 && m.best_pace_min_km <= m.avg_pace_min_km, `${m.best_pace_min_km} min/km`);
+check('duração calculada exclui grandes lacunas de GPS', m.elapsed_time_s < 1500 && m.elapsed_time_s > 1400, `${m.elapsed_time_s} s`);
 check('acelerações: 6 arrancadas (+ a saída da parada) => 6 a 9', m.accel_count >= 6 && m.accel_count <= 9, `${m.accel_count}`);
 
 // ----- sem os glitches, mesmo resultado (descarte não pode distorcer) -----
