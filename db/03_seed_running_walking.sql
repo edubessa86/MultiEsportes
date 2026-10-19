@@ -2,6 +2,10 @@
 -- Executar uma vez após db/02_seed_catalog.sql.
 -- Idempotente: pode ser executado novamente sem duplicar esportes/modalidades.
 -- Mantém ativos somente Futebol de Campo, Corrida e Caminhada, conforme decisão do produto.
+-- O enum original foi criado para esportes de quadra/campo; adicionamos 'outdoor'
+-- para não classificar corrida/caminhada incorretamente como grama.
+-- Esta instrução fica fora da transação porque o PostgreSQL exige commit antes de usar novo enum value.
+ALTER TYPE surface_kind ADD VALUE IF NOT EXISTS 'outdoor';
 
 BEGIN;
 
@@ -24,7 +28,7 @@ INSERT INTO modalities (
   manual_stats, min_valid_duration_min, rules, is_active, sort_order
 )
 SELECT s.id, v.slug, v.name_pt, v.name_en, 1, 1,
-       NULL, NULL, 'grass'::surface_kind, 'time'::period_kind, 1,
+       NULL, NULL, 'outdoor'::surface_kind, 'time'::period_kind, 1,
        1, 'activity', true, true, true, 1, v.rules::jsonb, true, v.sort_order
 FROM (VALUES
   ('running', 'running', 'Corrida', 'Running',
@@ -41,7 +45,7 @@ SET sport_id = EXCLUDED.sport_id,
     squad_max = 1,
     court_length_m = NULL,
     court_width_m = NULL,
-    surface = 'grass'::surface_kind,
+    surface = 'outdoor'::surface_kind,
     period_kind = 'time'::period_kind,
     period_count = 1,
     period_duration_min = 1,
