@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Multiesporte",
+    "slug": "multiesporte",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "multiesporte",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.example.multiesporte"
+    },
+    "android": {
+      "package": "com.example.multiesporte",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "isIosBackgroundLocationEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": "O app usa sua localização para medir distância e velocidade durante o treino, mesmo com a tela apagada.",
+          "locationWhenInUsePermission": "O app usa sua localização para medir distância e velocidade durante o treino."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ]
+  }
+}

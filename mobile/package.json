@@ -1,0 +1,38 @@
+{
+  "name": "multiesporte-app",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~58.0.11",
+    "expo-build-properties": "~58.0.10",
+    "expo-constants": "~58.0.12",
+    "expo-crypto": "~58.0.6",
+    "expo-keep-awake": "~58.0.3",
+    "expo-linking": "~58.0.13",
+    "expo-location": "~58.0.16",
+    "expo-router": "~58.0.20",
+    "expo-secure-store": "~58.0.2",
+    "expo-sensors": "~58.0.4",
+    "expo-status-bar": "~58.0.3",
+    "expo-task-manager": "~58.0.12",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "typecheck": "tsc --noEmit",
+    "bundle": "expo export --platform android",
+    "build:apk": "npx eas-cli@latest build -p android --profile preview",
+    "test:metrics": "npx --yes tsx scripts/metrics.test.ts && npx --yes tsx scripts/url.test.ts"
+  },
+  "private": true
+}

@@ -1,0 +1,1033 @@
+"""
+API GraphQL — app multiesporte de performance (futebol, vôlei, basquete, handebol).
+
+Convenções
+- Autenticação: header `Authorization: Bearer <JWT curto>`. O token NUNCA é argumento de query/mutation.
+- Renovação: mutation `refreshSession` com refresh token rotativo.
+- Paginação: conexões com cursor (`first`/`after`); rankings usam `first`/`offset`.
+- Mutations devolvem payloads com `userErrors` para erros de negócio previsíveis.
+- Sync offline: mutations idempotentes via `clientSessionId` / `clientEventId`.
+- Textos de catálogo vêm no idioma pedido (`lang`), com fallback para pt-BR.
+"""
+
+# ---------------------------------------------------------------------
+# Escalares e diretivas
+# ---------------------------------------------------------------------
+scalar UUID
+scalar DateTime
+scalar Date
+scalar Time
+scalar Decimal
+scalar JSON
+scalar URL
+
+enum AuthRequirement {
+  PUBLIC
+  USER
+  TEAM_MEMBER
+  TEAM_COACH
+  PREMIUM
+}
+
+"Regra de acesso aplicada pelo gateway/resolver."
+directive @auth(requires: AuthRequirement = USER) on FIELD_DEFINITION
+
+# ---------------------------------------------------------------------
+# Enums (espelham os enums do PostgreSQL)
+# ---------------------------------------------------------------------
+enum Language { PT_BR EN }
+enum Surface { GRASS SYNTHETIC_GRASS INDOOR_COURT SAND }
+enum PeriodKind { TIME SETS }
+enum TrackingSource { GPS IMU MANUAL WEARABLE HR_SENSOR DERIVED }
+enum AuthProvider { PASSWORD GOOGLE APPLE FACEBOOK PHONE }
+enum OtpChannel { WHATSAPP SMS }
+enum MemberRole { OWNER ADMIN COACH STATISTICIAN ATHLETE }
+enum MemberStatus { PENDING ACTIVE INACTIVE }
+enum ActivityKind { TRAINING MATCH TOURNAMENT OTHER }
+enum RsvpStatus { INVITED CONFIRMED DECLINED ATTENDED ABSENT }
+enum SessionStatus { RECORDING PROCESSING VALID INVALID DISPUTED }
+enum SessionOutcome { WIN DRAW LOSS }
+enum DeviceKind { PHONE WEAR_OS APPLE_WATCH OTHER }
+enum MatchStatus { SCHEDULED LIVE FINISHED CANCELLED }
+enum MatchSide { HOME AWAY }
+enum EventCategory { SCORING OFFENSE DEFENSE POSSESSION DISCIPLINE ADMINISTRATIVE }
+enum MotionEventKind { JUMP SPRINT ACCELERATION DECELERATION CHANGE_OF_DIRECTION }
+enum PracticeKind { TACTICAL_QUIZ TACTICAL_REVIEW LESSON }
+enum SubscriptionStatus { ACTIVE GRACE EXPIRED CANCELED }
+enum PaymentStatus { PENDING PAID EXPIRED REFUNDED }
+enum PaymentMethod { PIX BOLETO CARD GOOGLE_PLAY APP_STORE COUPON }
+enum ReportKind { ATHLETE TEAM SEASON MATCH }
+enum ReportStatus { PENDING READY FAILED }
+enum ConsentKind { TERMS PRIVACY BACKGROUND_LOCATION HEALTH_DATA MEDIA_SHARING MARKETING }
+enum DisputeStatus { OPEN REVIEWING ACCEPTED REJECTED }
+enum StoreKind { GOOGLE_PLAY APP_STORE }
+enum Platform { ANDROID IOS }
+
+# ---------------------------------------------------------------------
+# Paginação e erros
+# ---------------------------------------------------------------------
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type UserError {
+  "Código estável para o app tratar (ex.: INVALID_CODE, TEAM_FULL, PREMIUM_REQUIRED)."
+  code: String!
+  message: String!
+  field: [String!]
+}
+
+# ---------------------------------------------------------------------
+# CATÁLOGO — esportes e modalidades (público, cacheável)
+# ---------------------------------------------------------------------
+type Sport {
+  id: Int!
+  slug: String!
+  name: String!
+  icon: String
+  modalities: [Modality!]!
+}
+
+type Modality {
+  id: Int!
+  slug: String!
+  name: String!
+  sport: Sport!
+  playersOnCourt: Int!
+  squadMax: Int
+  courtLengthM: Decimal
+  courtWidthM: Decimal
+  surface: Surface!
+  periodKind: PeriodKind!
+  periodCount: Int!
+  periodDurationMin: Int
+  scoringUnit: String!
+  gpsRecommended: Boolean!
+  imuRecommended: Boolean!
+  manualStats: Boolean!
+  minValidDurationMin: Int!
+  "Regras extras (sets, shot clock, suspensões...), definidas no catálogo."
+  rules: JSON!
+  positions: [Position!]!
+  eventTypes: [ModalityEventType!]!
+  metrics: [ModalityMetric!]!
+}
+
+type Position {
+  id: Int!
+  code: String!
+  name: String!
+}
+
+type EventType {
+  id: Int!
+  code: String!
+  name: String!
+  category: EventCategory!
+  creditsOpponent: Boolean!
+}
+
+type ModalityEventType {
+  eventType: EventType!
+  "Pontos já resolvidos para esta modalidade (override ou padrão)."
+  points: Int!
+}
+
+type MetricDefinition {
+  id: Int!
+  code: String!
+  name: String!
+  unit: String!
+  source: TrackingSource!
+}
+
+type ModalityMetric {
+  metric: MetricDefinition!
+  isPrimary: Boolean!
+  weight: Decimal!
+  referenceValue: Decimal
+}
+
+# ---------------------------------------------------------------------
+# USUÁRIOS, ORGANIZAÇÕES, TIMES
+# ---------------------------------------------------------------------
+type Location {
+  countryCode: String
+  admin1: String
+  admin2: String
+}
+
+type User {
+  id: UUID!
+  fullName: String!
+  displayName: String
+  pictureUrl: URL
+  birthdate: Date
+  location: Location
+  locale: String!
+  isPremium: Boolean!
+  premiumUntil: DateTime
+  "Responsável legal, para menores de 18 anos."
+  guardian: User
+  modalities: [UserModality!]!
+  teams: [TeamMembership!]!
+  organizations: [OrganizationMembership!]!
+  xpTotal: Int!
+  createdAt: DateTime!
+}
+
+type UserModality {
+  modality: Modality!
+  primaryPosition: Position
+  dominantSide: String
+  level: String
+  isFavorite: Boolean!
+}
+
+type Organization {
+  id: UUID!
+  name: String!
+  slug: String!
+  kind: String!
+  logoUrl: URL
+  teams: [Team!]!
+}
+
+type OrganizationMembership {
+  organization: Organization!
+  role: MemberRole!
+  status: MemberStatus!
+}
+
+type Venue {
+  id: UUID!
+  name: String!
+  address: String
+  latitude: Float
+  longitude: Float
+  surface: Surface
+}
+
+type Team {
+  id: UUID!
+  name: String!
+  modality: Modality!
+  organization: Organization
+  inviteCode: String @auth(requires: TEAM_COACH)
+  logoUrl: URL
+  color: String
+  members(role: MemberRole, status: MemberStatus): [TeamMembership!]! @auth(requires: TEAM_MEMBER)
+  periods: [TeamPeriod!]!
+  trainingSlots: [TrainingSlot!]!
+  activities(from: DateTime, to: DateTime, kind: ActivityKind, first: Int = 20, after: String): TeamActivityConnection!
+  matches(status: MatchStatus, first: Int = 20, after: String): MatchConnection!
+  assessmentTemplates: [AssessmentTemplate!]! @auth(requires: TEAM_COACH)
+  archivedAt: DateTime
+}
+
+type TeamMembership {
+  team: Team!
+  user: User!
+  role: MemberRole!
+  status: MemberStatus!
+  jerseyNumber: Int
+  position: Position
+  joinedAt: DateTime!
+}
+
+type TeamPeriod {
+  id: UUID!
+  name: String!
+  startsOn: Date!
+  endsOn: Date!
+}
+
+type TrainingSlot {
+  id: UUID!
+  weekday: Int!
+  startTime: Time!
+  durationMin: Int!
+  venue: Venue
+}
+
+# ---------------------------------------------------------------------
+# AGENDA
+# ---------------------------------------------------------------------
+type TeamActivity {
+  id: UUID!
+  team: Team!
+  kind: ActivityKind!
+  title: String!
+  description: String
+  startsAt: DateTime!
+  endsAt: DateTime
+  venue: Venue
+  cancelledAt: DateTime
+  attendance: [Attendance!]!
+  media: [ActivityMedia!]!
+  match: Match
+}
+
+type TeamActivityEdge { cursor: String!, node: TeamActivity! }
+type TeamActivityConnection { edges: [TeamActivityEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
+
+type Attendance {
+  user: User!
+  rsvp: RsvpStatus!
+  checkedInAt: DateTime
+}
+
+type ActivityMedia {
+  id: UUID!
+  url: URL!
+  width: Int
+  height: Int
+  uploadedBy: User
+  createdAt: DateTime!
+}
+
+# ---------------------------------------------------------------------
+# SESSÕES (rastreamento individual)
+# ---------------------------------------------------------------------
+type Session {
+  id: UUID!
+  user: User!
+  modality: Modality!
+  teamActivity: TeamActivity
+  match: Match
+  venue: Venue
+  startedAt: DateTime!
+  endedAt: DateTime
+  durationSeconds: Int
+  source: TrackingSource!
+  deviceKind: DeviceKind
+  status: SessionStatus!
+  invalidReasons: [String!]!
+  "Score de 0 a ~150, calculado no servidor a partir das métricas da modalidade."
+  score: Decimal
+  rpe: Int
+  feeling: Int
+  outcome: SessionOutcome
+  pointsFor: Int
+  pointsAgainst: Int
+  heatmapUrl: URL
+  metrics: [SessionMetric!]!
+  motionEvents(kind: MotionEventKind): [MotionEvent!]!
+  "Trilha GPS bruta: só o próprio atleta (dado sensível)."
+  trackPoints(first: Int = 1000, after: Int = 0): [TrackPoint!]!
+  disputes: [SessionDispute!]!
+  xpEarned: Int!
+}
+
+type SessionEdge { cursor: String!, node: Session! }
+type SessionConnection { edges: [SessionEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
+
+type SessionMetric {
+  metric: MetricDefinition!
+  value: Decimal!
+}
+
+type MotionEvent {
+  kind: MotionEventKind!
+  occurredAt: DateTime!
+  value: Decimal
+  durationMs: Int
+}
+
+type TrackPoint {
+  seq: Int!
+  recordedAt: DateTime!
+  lat: Float!
+  lng: Float!
+  accuracyM: Float
+  speedMs: Float
+}
+
+type SessionDispute {
+  id: UUID!
+  message: String!
+  status: DisputeStatus!
+  createdAt: DateTime!
+}
+
+# ---------------------------------------------------------------------
+# PARTIDAS (súmula digital)
+# ---------------------------------------------------------------------
+type Match {
+  id: UUID!
+  modality: Modality!
+  homeTeam: Team
+  awayTeam: Team
+  homeName: String!
+  awayName: String!
+  status: MatchStatus!
+  scheduledAt: DateTime
+  startedAt: DateTime
+  endedAt: DateTime
+  venue: Venue
+  scorekeeper: User
+  scoreboard: Scoreboard!
+  periods: [MatchPeriod!]!
+  lineups(side: MatchSide): [MatchLineup!]!
+  events(periodNo: Int, includeVoided: Boolean = false): [MatchEvent!]!
+}
+
+type MatchEdge { cursor: String!, node: Match! }
+type MatchConnection { edges: [MatchEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
+
+"Esportes de tempo somam pontos; esportes de sets contam sets vencidos."
+type Scoreboard {
+  periodKind: PeriodKind!
+  homeScore: Int!
+  awayScore: Int!
+  periodScores: [PeriodScore!]!
+}
+
+type PeriodScore {
+  periodNo: Int!
+  homePoints: Int!
+  awayPoints: Int!
+  endedAt: DateTime
+}
+
+type MatchPeriod {
+  periodNo: Int!
+  startedAt: DateTime
+  endedAt: DateTime
+}
+
+type MatchLineup {
+  id: UUID!
+  side: MatchSide!
+  user: User
+  displayName: String!
+  jerseyNumber: Int
+  position: Position
+  isStarter: Boolean!
+}
+
+type MatchEvent {
+  id: ID!
+  periodNo: Int!
+  side: MatchSide!
+  eventType: EventType!
+  lineup: MatchLineup
+  relatedLineup: MatchLineup
+  clockSeconds: Int
+  points: Int!
+  "Posição normalizada na quadra, 0 a 100."
+  x: Decimal
+  y: Decimal
+  voidedAt: DateTime
+  createdAt: DateTime!
+}
+
+# ---------------------------------------------------------------------
+# ESTATÍSTICAS E RANKINGS
+# ---------------------------------------------------------------------
+type Season {
+  id: Int!
+  name: String!
+  startsOn: Date!
+  endsOn: Date!
+}
+
+type AthleteEventTotal {
+  eventType: EventType!
+  occurrences: Int!
+  points: Int!
+}
+
+type MetricAverage {
+  metric: MetricDefinition!
+  average: Decimal!
+  best: Decimal!
+  sessionsCount: Int!
+}
+
+type AthleteStatistics {
+  user: User!
+  modality: Modality!
+  sessionsCount: Int!
+  validSessionsCount: Int!
+  matchesPlayed: Int!
+  averageScore: Decimal
+  metrics: [MetricAverage!]!
+  eventTotals: [AthleteEventTotal!]!
+}
+
+"Perfil público (ranking): sem data de nascimento, contato, premium ou responsável (LGPD)."
+type PublicUser {
+  id: UUID!
+  displayName: String!
+  pictureUrl: URL
+  location: Location
+}
+
+type PerformanceRankingEntry {
+  position: Int!
+  user: PublicUser!
+  totalScore: Decimal!
+  sessionsCounted: Int!
+}
+
+type XpRankingEntry {
+  position: Int!
+  user: PublicUser!
+  totalXp: Int!
+}
+
+type PerformanceRankingPage {
+  entries: [PerformanceRankingEntry!]!
+  "Posição do usuário logado no mesmo filtro (mesmo fora da página)."
+  viewerEntry: PerformanceRankingEntry
+}
+
+type XpRankingPage {
+  entries: [XpRankingEntry!]!
+  viewerEntry: XpRankingEntry
+}
+
+input LocationFilter {
+  countryCode: String
+  admin1: String
+  admin2: String
+}
+
+# ---------------------------------------------------------------------
+# GAMIFICAÇÃO — práticas (quizzes/aulas) e XP
+# ---------------------------------------------------------------------
+type Practice {
+  id: UUID!
+  kind: PracticeKind!
+  sport: Sport
+  modality: Modality
+  title: String!
+  cardImageUrl: URL
+  baseXp: Int!
+  requiresPremium: Boolean!
+  isUnlocked: Boolean!
+  unlocksAfter: Practice
+  unlockPopup: JSON
+  completed: Boolean!
+  questions: [QuizQuestion!]! @auth(requires: USER)
+}
+
+type QuizQuestion {
+  id: UUID!
+  position: Int!
+  text: String!
+  imageUrl: URL
+  options: [QuizOption!]!
+}
+
+type QuizOption {
+  value: String!
+  label: String!
+}
+
+type PracticeResult {
+  practice: Practice!
+  score: Decimal
+  xpEarned: Int!
+  "Gabarito só é devolvido depois da resposta."
+  corrections: [QuizCorrection!]!
+}
+
+type QuizCorrection {
+  questionId: UUID!
+  correctOption: String!
+  explanation: String
+  wasCorrect: Boolean!
+}
+
+type XpEntry {
+  id: ID!
+  amount: Int!
+  sourceKind: String!
+  modality: Modality
+  createdAt: DateTime!
+}
+
+type XpEntryEdge { cursor: String!, node: XpEntry! }
+type XpEntryConnection { edges: [XpEntryEdge!]!, pageInfo: PageInfo!, totalCount: Int! }
+
+# ---------------------------------------------------------------------
+# AVALIAÇÕES TÉCNICAS
+# ---------------------------------------------------------------------
+type AssessmentTemplate {
+  id: UUID!
+  name: String!
+  modality: Modality!
+  position: Position
+  criteria: [AssessmentCriterion!]!
+}
+
+type AssessmentCriterion {
+  id: UUID!
+  name: String!
+  sortOrder: Int!
+  options: [AssessmentOption!]!
+}
+
+type AssessmentOption {
+  id: UUID!
+  label: String!
+  value: Int!
+}
+
+type AssessmentResult {
+  id: UUID!
+  template: AssessmentTemplate!
+  criterion: AssessmentCriterion!
+  athlete: User!
+  evaluator: User!
+  option: AssessmentOption!
+  appScore: Decimal
+  coachScore: Decimal
+  evaluatedAt: DateTime!
+}
+
+# ---------------------------------------------------------------------
+# RELATÓRIOS, NOTIFICAÇÕES, PREMIUM
+# ---------------------------------------------------------------------
+type Report {
+  id: UUID!
+  kind: ReportKind!
+  title: String!
+  status: ReportStatus!
+  fileUrl: URL
+  params: JSON!
+  createdAt: DateTime!
+}
+
+type Notification {
+  id: UUID!
+  kind: String!
+  title: String!
+  body: String
+  data: JSON!
+  readAt: DateTime
+  createdAt: DateTime!
+}
+
+type NotificationEdge { cursor: String!, node: Notification! }
+type NotificationConnection {
+  edges: [NotificationEdge!]!
+  pageInfo: PageInfo!
+  unreadCount: Int!
+}
+
+type Plan {
+  id: Int!
+  code: String!
+  name: String!
+  priceCents: Int!
+  currency: String!
+  periodMonths: Int!
+  storeProductId: String
+}
+
+type PremiumSubscription {
+  id: UUID!
+  plan: Plan!
+  status: SubscriptionStatus!
+  method: PaymentMethod!
+  startsAt: DateTime!
+  expiresAt: DateTime!
+}
+
+type Payment {
+  id: UUID!
+  description: String!
+  amountCents: Int!
+  method: PaymentMethod!
+  status: PaymentStatus!
+  expiresAt: DateTime
+  "Pix copia e cola."
+  pixPayload: String
+  boletoUrl: URL
+  receiptUrl: URL
+}
+
+type Consent {
+  kind: ConsentKind!
+  version: String!
+  granted: Boolean!
+  createdAt: DateTime!
+}
+
+# =====================================================================
+# QUERY
+# =====================================================================
+type Query {
+  # ----- Catálogo (público) -----
+  sports(lang: Language = PT_BR): [Sport!]! @auth(requires: PUBLIC)
+  modalities(sportSlug: String, lang: Language = PT_BR): [Modality!]! @auth(requires: PUBLIC)
+  modality(slug: String!, lang: Language = PT_BR): Modality @auth(requires: PUBLIC)
+  seasons(organizationId: UUID): [Season!]! @auth(requires: PUBLIC)
+
+  # ----- Usuário logado -----
+  viewer: User @auth(requires: USER)
+  user(id: UUID!): User @auth(requires: USER)
+  teamsOfViewer(modalityId: Int): [TeamMembership!]! @auth(requires: USER)
+
+  # ----- Times e agenda -----
+  team(id: UUID!): Team @auth(requires: TEAM_MEMBER)
+  "Pré-visualização antes de entrar: devolve só nome, modalidade e logo."
+  teamByInviteCode(code: String!): Team @auth(requires: USER)
+  teamActivity(id: UUID!): TeamActivity @auth(requires: TEAM_MEMBER)
+
+  # ----- Sessões e partidas -----
+  session(id: UUID!): Session @auth(requires: USER)
+  mySessions(
+    modalityId: Int, status: SessionStatus, from: DateTime, to: DateTime,
+    first: Int = 20, after: String
+  ): SessionConnection! @auth(requires: USER)
+  match(id: UUID!): Match @auth(requires: TEAM_MEMBER)
+
+  # ----- Estatísticas e rankings -----
+  athleteStatistics(userId: UUID, modalityId: Int!, seasonId: Int): AthleteStatistics! @auth(requires: USER)
+  performanceRanking(
+    modalityId: Int!, seasonId: Int!, location: LocationFilter,
+    first: Int = 50, offset: Int = 0
+  ): PerformanceRankingPage! @auth(requires: USER)
+  xpRanking(
+    seasonId: Int, modalityId: Int, first: Int = 50, offset: Int = 0
+  ): XpRankingPage! @auth(requires: USER)
+
+  # ----- Práticas e XP -----
+  practices(sportSlug: String, modalityId: Int, kind: PracticeKind, lang: Language = PT_BR): [Practice!]! @auth(requires: USER)
+  practice(id: UUID!, lang: Language = PT_BR): Practice @auth(requires: USER)
+  xpEntries(first: Int = 30, after: String): XpEntryConnection! @auth(requires: USER)
+
+  # ----- Avaliações e relatórios -----
+  assessmentResults(athleteId: UUID!, modalityId: Int, first: Int = 50): [AssessmentResult!]! @auth(requires: USER)
+  reports(teamId: UUID, athleteId: UUID): [Report!]! @auth(requires: USER)
+
+  # ----- Notificações, premium, consentimentos -----
+  notifications(first: Int = 20, after: String): NotificationConnection! @auth(requires: USER)
+  plans: [Plan!]! @auth(requires: PUBLIC)
+  mySubscription: PremiumSubscription @auth(requires: USER)
+  myPayments(status: PaymentStatus): [Payment!]! @auth(requires: USER)
+  myConsents: [Consent!]! @auth(requires: USER)
+}
+
+# =====================================================================
+# INPUTS
+# =====================================================================
+input SignUpInput {
+  email: String!
+  password: String!
+  fullName: String!
+  birthdate: Date
+  locale: String = "pt-BR"
+  "Obrigatório se o usuário for menor de 18 anos (LGPD art. 14)."
+  guardianEmail: String
+}
+
+input SignInInput {
+  email: String!
+  password: String!
+}
+
+input SocialSignInInput {
+  provider: AuthProvider!
+  "ID token emitido pelo provedor; validado no servidor."
+  idToken: String!
+  fullName: String
+}
+
+input UpdateProfileInput {
+  fullName: String
+  displayName: String
+  birthdate: Date
+  pictureUrl: URL
+  locale: String
+  location: LocationFilter
+}
+
+input UserModalityInput {
+  modalityId: Int!
+  primaryPositionId: Int
+  dominantSide: String
+  level: String
+  isFavorite: Boolean
+}
+
+input TeamInput {
+  id: UUID
+  organizationId: UUID
+  modalityId: Int!
+  name: String!
+  logoUrl: URL
+  color: String
+}
+
+input TeamActivityInput {
+  id: UUID
+  teamId: UUID!
+  kind: ActivityKind!
+  title: String!
+  description: String
+  startsAt: DateTime!
+  endsAt: DateTime
+  venueId: UUID
+  inviteeIds: [UUID!]
+}
+
+input MetricInput {
+  metricCode: String!
+  value: Decimal!
+}
+
+input TrackPointInput {
+  seq: Int!
+  recordedAt: DateTime!
+  lat: Float!
+  lng: Float!
+  accuracyM: Float
+  speedMs: Float
+}
+
+input MotionEventInput {
+  kind: MotionEventKind!
+  occurredAt: DateTime!
+  value: Decimal
+  durationMs: Int
+}
+
+"Envio idempotente de uma sessão gravada offline."
+input SyncSessionInput {
+  clientSessionId: UUID!
+  modalityId: Int!
+  teamActivityId: UUID
+  matchId: UUID
+  venueId: UUID
+  startedAt: DateTime!
+  endedAt: DateTime!
+  source: TrackingSource!
+  deviceKind: DeviceKind
+  metrics: [MetricInput!]!
+  trackPoints: [TrackPointInput!]
+  motionEvents: [MotionEventInput!]
+  rpe: Int
+  feeling: Int
+  outcome: SessionOutcome
+  pointsFor: Int
+  pointsAgainst: Int
+}
+
+input MatchInput {
+  id: UUID
+  modalityId: Int!
+  teamActivityId: UUID
+  homeTeamId: UUID
+  awayTeamId: UUID
+  homeName: String!
+  awayName: String!
+  scheduledAt: DateTime
+  venueId: UUID
+}
+
+input LineupEntryInput {
+  side: MatchSide!
+  userId: UUID
+  displayName: String!
+  jerseyNumber: Int
+  positionId: Int
+  isStarter: Boolean = false
+}
+
+input MatchEventInput {
+  "Idempotência: o app gera o UUID e pode reenviar sem duplicar."
+  clientEventId: UUID!
+  matchId: UUID!
+  periodNo: Int!
+  side: MatchSide!
+  eventTypeCode: String!
+  lineupId: UUID
+  relatedLineupId: UUID
+  clockSeconds: Int
+  x: Decimal
+  y: Decimal
+}
+
+input QuizAnswerInput {
+  questionId: UUID!
+  option: String!
+}
+
+input AssessmentTemplateInput {
+  id: UUID
+  teamId: UUID
+  modalityId: Int!
+  positionId: Int
+  name: String!
+  criteria: [AssessmentCriterionInput!]!
+}
+
+input AssessmentCriterionInput {
+  name: String!
+  options: [AssessmentOptionInput!]!
+}
+
+input AssessmentOptionInput {
+  label: String!
+  value: Int!
+}
+
+input AssessmentAnswerInput {
+  criterionId: UUID!
+  optionId: UUID!
+  coachScore: Decimal
+}
+
+input ReportInput {
+  kind: ReportKind!
+  teamId: UUID
+  athleteId: UUID
+  matchId: UUID
+  seasonId: Int
+}
+
+input StoreTransactionInput {
+  store: StoreKind!
+  productId: String!
+  "Token da compra; o servidor valida com as APIs do Google/Apple."
+  purchaseToken: String!
+}
+
+# =====================================================================
+# PAYLOADS
+# =====================================================================
+type AuthPayload {
+  accessToken: String
+  refreshToken: String
+  expiresAt: DateTime
+  viewer: User
+  userErrors: [UserError!]!
+}
+
+type SimplePayload { success: Boolean!, userErrors: [UserError!]! }
+type UserPayload { user: User, userErrors: [UserError!]! }
+type TeamPayload { team: Team, userErrors: [UserError!]! }
+type TeamActivityPayload { activity: TeamActivity, userErrors: [UserError!]! }
+type MatchPayload { match: Match, userErrors: [UserError!]! }
+type MatchEventPayload { event: MatchEvent, scoreboard: Scoreboard, userErrors: [UserError!]! }
+type AssessmentTemplatePayload { template: AssessmentTemplate, userErrors: [UserError!]! }
+type AssessmentSubmitPayload { results: [AssessmentResult!]!, userErrors: [UserError!]! }
+type ReportPayload { report: Report, userErrors: [UserError!]! }
+type PracticePayload { result: PracticeResult, userErrors: [UserError!]! }
+type PaymentPayload { payment: Payment, userErrors: [UserError!]! }
+type SubscriptionPayload { subscription: PremiumSubscription, viewer: User, userErrors: [UserError!]! }
+
+type SyncSessionPayload {
+  session: Session
+  "true se o clientSessionId já existia (reenvio): nada foi duplicado."
+  alreadySynced: Boolean!
+  xpEarned: Int!
+  userErrors: [UserError!]!
+}
+
+type JoinTeamPayload {
+  membership: TeamMembership
+  userErrors: [UserError!]!
+}
+
+type UploadSlot {
+  uploadUrl: URL!
+  publicUrl: URL!
+  expiresAt: DateTime!
+}
+
+# =====================================================================
+# MUTATION
+# =====================================================================
+type Mutation {
+  # ----- Autenticação -----
+  signUp(input: SignUpInput!): AuthPayload! @auth(requires: PUBLIC)
+  signIn(input: SignInInput!): AuthPayload! @auth(requires: PUBLIC)
+  signInWithProvider(input: SocialSignInInput!): AuthPayload! @auth(requires: PUBLIC)
+  sendPhoneCode(phone: String!, channel: OtpChannel = WHATSAPP): SimplePayload! @auth(requires: PUBLIC)
+  verifyPhoneCode(phone: String!, code: String!): AuthPayload! @auth(requires: PUBLIC)
+  refreshSession(refreshToken: String!): AuthPayload! @auth(requires: PUBLIC)
+  requestPasswordReset(email: String!): SimplePayload! @auth(requires: PUBLIC)
+  signOut(refreshToken: String!): SimplePayload! @auth(requires: USER)
+  "LGPD: abre pedido de exclusão; dados são anonimizados/apagados em prazo definido."
+  requestAccountDeletion: SimplePayload! @auth(requires: USER)
+
+  # ----- Perfil -----
+  updateProfile(input: UpdateProfileInput!): UserPayload! @auth(requires: USER)
+  upsertUserModality(input: UserModalityInput!): UserPayload! @auth(requires: USER)
+  removeUserModality(modalityId: Int!): UserPayload! @auth(requires: USER)
+  registerPushToken(token: String!, platform: Platform!): SimplePayload! @auth(requires: USER)
+  createUploadSlot(contentType: String!, purpose: String!): UploadSlot! @auth(requires: USER)
+  recordConsent(kind: ConsentKind!, version: String!, granted: Boolean!): SimplePayload! @auth(requires: USER)
+
+  # ----- Times e agenda -----
+  upsertTeam(input: TeamInput!): TeamPayload! @auth(requires: USER)
+  joinTeamByCode(code: String!): JoinTeamPayload! @auth(requires: USER)
+  leaveTeam(teamId: UUID!): SimplePayload! @auth(requires: TEAM_MEMBER)
+  updateTeamMember(
+    teamId: UUID!, userId: UUID!, role: MemberRole, status: MemberStatus,
+    jerseyNumber: Int, positionId: Int
+  ): SimplePayload! @auth(requires: TEAM_COACH)
+  removeTeamMember(teamId: UUID!, userId: UUID!): SimplePayload! @auth(requires: TEAM_COACH)
+  upsertTeamActivity(input: TeamActivityInput!): TeamActivityPayload! @auth(requires: TEAM_COACH)
+  cancelTeamActivity(id: UUID!): TeamActivityPayload! @auth(requires: TEAM_COACH)
+  setAttendance(teamActivityId: UUID!, userId: UUID, rsvp: RsvpStatus!): SimplePayload! @auth(requires: TEAM_MEMBER)
+  addActivityMedia(teamActivityId: UUID!, url: URL!, width: Int, height: Int): SimplePayload! @auth(requires: TEAM_MEMBER)
+
+  # ----- Sessões -----
+  "Idempotente: reenviar o mesmo clientSessionId devolve a sessão existente."
+  syncSession(input: SyncSessionInput!): SyncSessionPayload! @auth(requires: USER)
+  disputeSession(sessionId: UUID!, message: String!): SimplePayload! @auth(requires: USER)
+
+  # ----- Súmula digital (partidas) -----
+  upsertMatch(input: MatchInput!): MatchPayload! @auth(requires: TEAM_COACH)
+  setMatchLineup(matchId: UUID!, entries: [LineupEntryInput!]!): MatchPayload! @auth(requires: TEAM_MEMBER)
+  startMatchPeriod(matchId: UUID!, periodNo: Int!): MatchPayload! @auth(requires: TEAM_MEMBER)
+  endMatchPeriod(matchId: UUID!, periodNo: Int!): MatchPayload! @auth(requires: TEAM_MEMBER)
+  recordMatchEvent(input: MatchEventInput!): MatchEventPayload! @auth(requires: TEAM_MEMBER)
+  "Envio em lote (sync offline do estatístico)."
+  recordMatchEvents(inputs: [MatchEventInput!]!): [MatchEventPayload!]! @auth(requires: TEAM_MEMBER)
+  "Corrige sem apagar histórico: marca o evento como anulado."
+  voidMatchEvent(eventId: ID!): MatchEventPayload! @auth(requires: TEAM_MEMBER)
+  finishMatch(matchId: UUID!): MatchPayload! @auth(requires: TEAM_MEMBER)
+
+  # ----- Práticas e XP -----
+  submitPractice(practiceId: UUID!, answers: [QuizAnswerInput!]!): PracticePayload! @auth(requires: USER)
+
+  # ----- Avaliações e relatórios -----
+  upsertAssessmentTemplate(input: AssessmentTemplateInput!): AssessmentTemplatePayload! @auth(requires: TEAM_COACH)
+  submitAssessment(
+    templateId: UUID!, athleteId: UUID!, answers: [AssessmentAnswerInput!]!
+  ): AssessmentSubmitPayload! @auth(requires: TEAM_COACH)
+  generateReport(input: ReportInput!): ReportPayload! @auth(requires: USER)
+
+  # ----- Notificações -----
+  markNotificationsRead(ids: [UUID!]): SimplePayload! @auth(requires: USER)
+
+  # ----- Premium e pagamentos -----
+  redeemCoupon(code: String!): SubscriptionPayload! @auth(requires: USER)
+  registerStoreTransaction(input: StoreTransactionInput!): SubscriptionPayload! @auth(requires: USER)
+  createPixPayment(amountCents: Int!, description: String!, athleteId: UUID, organizationId: UUID): PaymentPayload! @auth(requires: USER)
+}
+
+# =====================================================================
+# SUBSCRIPTION (tempo real: placar ao vivo e súmula)
+# =====================================================================
+type MatchLiveUpdate {
+  match: Match!
+  lastEvent: MatchEvent
+  scoreboard: Scoreboard!
+}
+
+type Subscription {
+  "Placar e eventos de uma partida ao vivo."
+  matchUpdated(matchId: UUID!): MatchLiveUpdate! @auth(requires: TEAM_MEMBER)
+  "Novas notificações do usuário logado."
+  notificationReceived: Notification! @auth(requires: USER)
+}
