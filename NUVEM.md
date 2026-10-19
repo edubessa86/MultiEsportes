@@ -13,7 +13,7 @@ Nada precisa rodar no seu computador. Você só usa o navegador.
 ## 1. Levar os arquivos para o GitHub (pelo navegador)
 1. Descompacte o `esportes-app.zip` (duplo clique no Mac).
 2. No seu repositório: **Add file → Upload files**. Arraste as pastas `db`, `graphql`, `mobile`, `server` e o `README.md` (o limite é 100 arquivos por envio; o pacote tem menos que isso). Escreva uma mensagem e clique em **Commit changes**.
-3. A pasta `.github` fica escondida no Finder. Crie o arquivo pelo site: **Add file → Create new file**, no nome digite `.github/workflows/build-apk.yml` (as barras criam as pastas) e cole o conteúdo do arquivo `build-apk.yml` do zip. Commit.
+3. A pasta `.github` fica escondida no Finder. Crie os dois arquivos pelo site: **Add file → Create new file**, no nome digite `.github/workflows/build-apk.yml` (as barras criam as pastas) e cole o conteúdo do arquivo de mesmo nome do zip; commit. Repita para `.github/workflows/smoke-test.yml`.
 
 > Se o seu repositório já tem o servidor em outra estrutura, ajuste `working-directory` no `build-apk.yml` e o **Root Directory** no Render.
 
@@ -45,7 +45,31 @@ No serviço (Web Service ligado ao repositório do GitHub):
 Se o Render reclamar da versão do Node, acrescente `NODE_VERSION` = `22`.
 Teste no Hoppscotch (`https://multiesportes.onrender.com/graphql`): `{ modalities { slug name } }`.
 
-## 4. APK (Expo EAS, disparado pelo GitHub)
+### Se o servidor não subir (aba **Logs** do Render)
+O servidor confere o banco antes de abrir a porta e diz o que está errado:
+
+| Mensagem no log | O que fazer |
+|---|---|
+| `O DATABASE_URL usa o usuário "...", que ignora o isolamento entre usuários` | A URL está com o usuário dono do Neon. Use o `app_rw` (passo 2 e a `DATABASE_URL` acima). Isso é proposital: com o dono, um usuário poderia ler as sessões de outro. |
+| `O esquema do banco não está instalado` | Rode `db/neon_setup.sql` no SQL Editor do Neon. |
+| `Não foi possível conectar ao banco` | Confira senha, endereço e o `?sslmode=require` da `DATABASE_URL`. |
+| `schema.graphql não encontrado` | O repositório precisa ter a pasta `graphql/` ao lado de `server/` (ou defina `SCHEMA_PATH`). |
+
+## 4. Conferir tudo com um botão (sem alterar dados)
+GitHub → **Actions → Testar servidor na nuvem → Run workflow** (deixe o endereço padrão ou troque).
+Ele espera o Render acordar (até ~2,5 min) e confere: servidor no ar, banco conectado, catálogo com as 3 modalidades ativas, temporada em vigor, login protegido e GraphiQL desligado. **Não cria usuários nem sessões.** Verde = pode instalar o app. Vermelho = a linha com ✗ diz o que corrigir.
+
+Se preferir testar à mão no Hoppscotch (`https://multiesportes.onrender.com/graphql`, aba GraphQL):
+```graphql
+{ modalities { slug name } }
+```
+```graphql
+mutation { signUp(input: { email: "voce@exemplo.com", password: "uma-senha-forte", fullName: "Seu Nome" }) {
+  accessToken userErrors { code message } } }
+```
+Com o `accessToken` recebido, no painel **Headers** coloque `Authorization: Bearer <accessToken>` e rode `{ viewer { fullName xpTotal } }`.
+
+## 5. APK (Expo EAS, disparado pelo GitHub)
 
 **Uma vez só:**
 1. Crie a conta grátis em <https://expo.dev>.

@@ -187,3 +187,5 @@ async function main() {
 }
 
 main().catch((e) => { console.error('Falha inesperada:', e); process.exit(1); });
+
+export {};

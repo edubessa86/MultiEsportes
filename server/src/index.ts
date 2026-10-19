@@ -66,6 +66,38 @@ const yoga = createYoga<{}, Ctx>({
   },
 });
 
+
+// Segurança: o isolamento entre usuários depende do RLS do banco, que NÃO vale para superusuário,
+// papéis com BYPASSRLS nem para o dono das tabelas. Se o DATABASE_URL usar um desses, o servidor não sobe.
+async function assertSafeDatabase(): Promise<void> {
+  let r;
+  try {
+    r = (
+      await pool.query(
+        `SELECT current_user AS u,
+                to_regclass('public.sessions') IS NOT NULL AS schema_ok,
+                COALESCE((SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user), false) AS bypass,
+                EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'sessions' AND tableowner = current_user) AS owner
+           FROM (SELECT 1) x`,
+      )
+    ).rows[0];
+  } catch (e) {
+    throw new Error(`Não foi possível conectar ao banco: ${(e as Error).message}. Confira o DATABASE_URL.`);
+  }
+  if (!r.schema_ok)
+    throw new Error('O esquema do banco não está instalado (tabela "sessions" ausente). Rode db/neon_setup.sql no banco.');
+  const unsafe = r.bypass || r.owner;
+  if (unsafe && process.env.ALLOW_UNSAFE_DB_ROLE !== '1') {
+    throw new Error(
+      `O DATABASE_URL usa o usuário "${r.u}", que ignora o isolamento entre usuários (RLS). ` +
+      'Use o papel "app_rw" (veja NUVEM.md, passo do Neon). Para ignorar isso SÓ em testes locais: ALLOW_UNSAFE_DB_ROLE=1.',
+    );
+  }
+  if (unsafe) console.warn(`ATENÇÃO: conectado como "${r.u}" com ALLOW_UNSAFE_DB_ROLE=1. O isolamento entre usuários (RLS) NÃO está ativo. Nunca use isso em produção.`);
+  else console.log(`Banco OK: conectado como "${r.u}" (RLS ativo).`);
+}
+await assertSafeDatabase();
+
 const server = createServer(yoga);
 server.listen(config.port, config.host, () => {
   console.log(`API pronta em http://${config.host}:${config.port}/graphql`);
