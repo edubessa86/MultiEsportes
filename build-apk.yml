@@ -1,0 +1,40 @@
+# Gera o APK do app na nuvem da Expo (EAS Build), sem usar o seu computador.
+# Como usar: GitHub > aba "Actions" > "Gerar APK Android" > "Run workflow".
+# Pré-requisito: segredo EXPO_TOKEN no repositório (veja NUVEM.md).
+name: Gerar APK Android
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build na nuvem da Expo
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile   # pasta do app dentro do repositório
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Instala dependências
+        run: npm ci
+
+      - name: Confere os tipos
+        run: npm run typecheck
+
+      - name: Confere o login na Expo
+        run: eas whoami
+
+      - name: Dispara a build do APK
+        run: eas build --platform android --profile preview --non-interactive --no-wait
