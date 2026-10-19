@@ -1,4 +1,4 @@
-import { createServer } from 'node:http';
+ort { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { GraphQLError, Kind, parse } from 'graphql';
 import { createSchema, createYoga } from 'graphql-yoga';
