@@ -1,85 +1,699 @@
+scalar DateTime
+scalar UUID
+scalar JSON
+
 type Query {
   ping: String
-  sports: [Sport!]!
-  modalities: [Modality!]!
-  modality(id: ID!): Modality
-  catalog: Catalog!
-  me: User
-  mySessions(limit: Int, offset: Int): [Session!]!
-  ranking(sportId: ID!, period: String!): [RankingEntry!]!
-  seasons: [Season!]!
-  session(id: ID!): Session
+  sports(lang: Language): [Sport!]!
+  modalities(sportSlug: String, lang: Language): [Modality!]!
+  modality(slug: String!, lang: Language): Modality
+  catalog(lang: Language): Catalog!
+  viewer: User
+  user(id: ID!): User
+  myConsents: [Consent!]!
+  mySessions(
+    modalityId: Int
+    status: SessionStatus
+    from: DateTime
+    to: DateTime
+    first: Int = 20
+    after: String
+  ): SessionConnection!
+  session(id: UUID!): Session
+  seasons(organizationId: UUID): [Season!]!
+  performanceRanking(
+    modalityId: Int!
+    seasonId: Int!
+    first: Int = 50
+    offset: Int = 0
+    location: RankingLocationInput
+  ): PerformanceRanking!
+  xpRanking(
+    seasonId: Int
+    modalityId: Int
+    first: Int = 50
+    offset: Int = 0
+  ): XpRanking!
 }
 
 type Mutation {
-  ping: String
-  login(input: LoginInput!): AuthPayload!
-  register(input: RegisterInput!): AuthPayload!
+  signUp(input: SignUpInput!): AuthPayload!
+  signIn(input: SignInInput!): AuthPayload!
+  refreshSession(refreshToken: String!): AuthPayload!
+  signOut(refreshToken: String!): SimplePayload!
+  updateProfile(input: UpdateProfileInput!): UserPayload!
+  upsertUserModality(input: UserModalityInput!): UserPayload!
+  removeUserModality(modalityId: Int!): UserPayload!
+  recordConsent(
+    kind: String!
+    version: String!
+    granted: Boolean!
+  ): SimplePayload!
+  syncSession(input: SyncSessionInput!): SyncSessionPayload!
+  disputeSession(sessionId: UUID!, message: String!): SimplePayload!
   createSession(input: SessionInput!): Session!
+}
+
+enum Language {
+  PT_BR
+  EN
+}
+
+enum SessionStatus {
+  RECORDING
+  PROCESSING
+  VALID
+  INVALID
+  DISPUTED
+}
+
+enum TrackingSource {
+  GPS
+  IMU
+  MANUAL
+  WEAR_OS
+  HR_SENSOR
+  DERIVED
+}
+
+enum SessionOutcome {
+  WIN
+  DRAW
+  LOSS
 }
 
 type Sport {
   id: ID!
+  slug: String!
   name: String!
-  description: String
+  icon: String
   modalities: [Modality!]!
 }
 
 type Modality {
-  id: ID!
+  id: Int!
+  slug: String!
   name: String!
-  sportId: ID!
+  sportId: Int!
+  sport: Sport!
+  gpsRecommended: Boolean!
+  imuRecommended: Boolean!
+  minValidDurationMin: Int!
+  periodKind: String!
+  metrics: [ModalityMetric!]!
+}
+
+type ModalityMetric {
+  isPrimary: Boolean!
+  weight: Float!
+  metric: Metric!
+}
+
+type Metric {
+  code: String!
+  name: String!
+  unit: String!
+}
+
+type Catalog {
+  modalities: [Modality!]!
+  seasons: [Season!]!
 }
 
 type Season {
-  id: ID!
+  id: Int!
   name: String!
   startDate: String
   endDate: String
 }
 
-type Catalog {
-  sports: [Sport!]!
+type User {
+  id: ID!
+  email: String!
+  fullName: String!
+  displayName: String
+  xpTotal: Int!
+  isPremium: Boolean!
+  birthdate: String
+  locale: String
+  pictureUrl: String
+  location: UserLocation
+  guardian: User
+  teams: [Team!]!
+  organizations: [Organization!]!
+  modalities: [UserModality!]!
+}
+
+type UserLocation {
+  countryCode: String
+  admin1: String
+  admin2: String
+}
+
+type UserModality {
+  modality: Modality!
+  primaryPosition: Position
+  dominantSide: String
+  level: String
+  isFavorite: Boolean!
+}
+
+type Position {
+  id: ID!
+  code: String!
+  name: String!
+}
+
+type Team {
+  id: ID!
+  name: String!
+}
+
+type Organization {
+  id: ID!
+  name: String!
+}
+
+type Consent {
+  kind: String!
+  version: String!
+  granted: Boolean!
+  createdAt: DateTime!
+}
+
+type AuthPayload {
+  accessToken: String
+  refreshToken: String
+  expiresAt: DateTime
+  viewer: User
+  userErrors: [UserError!]!
+}
+
+type UserPayload {
+  user: User
+  userErrors: [UserError!]!
+}
+
+type UserError {
+  code: String!
+  message: String!
+  field: [String!]
+}
+
+type SimplePayload {
+  success: Boolean!
+  userErrors: [UserError!]!
+}
+
+type SessionConnection {
+  totalCount: Int!
+  pageInfo: PageInfo!
+  edges: [SessionEdge!]!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type SessionEdge {
+  cursor: String!
+  node: Session!
+}
+
+type Session {
+  id: UUID!
+  modality: Modality!
+  startedAt: DateTime!
+  endedAt: DateTime
+  durationSeconds: Int
+  status: SessionStatus!
+  score: Float
+  invalidReasons: [String!]!
+  xpEarned: Int!
+}
+
+type SyncSessionPayload {
+  alreadySynced: Boolean!
+  xpEarned: Int!
+  userErrors: [UserError!]!
+  session: Session
+}
+
+type PerformanceRanking {
+  entries: [PerformanceRankingEntry!]!
+  viewerEntry: PerformanceRankingEntry
+}
+
+type PerformanceRankingEntry {
+  position: Int!
+  totalScore: Float!
+  sessionsCounted: Int!
+  user: PublicUser!
+}
+
+type XpRanking {
+  entries: [XpRankingEntry!]!
+  viewerEntry: XpRankingEntry
+}
+
+type XpRankingEntry {
+  position: Int!
+  totalXp: Int!
+  user: PublicUser!
+}
+
+type PublicUser {
+  id: ID!
+  displayName: String!
+  pictureUrl: String
+  location: UserLocation
+}
+
+input SignUpInput {
+  email: String!
+  password: String!
+  fullName: String!
+  birthdate: String
+  locale: String
+}
+
+input SignInInput {
+  email: String!
+  password: String!
+}
+
+input UpdateProfileInput {
+  fullName: String
+  displayName: String
+  birthdate: String
+  pictureUrl: String
+  locale: String
+  location: UserLocationInput
+}
+
+input UserLocationInput {
+  countryCode: String
+  admin1: String
+  admin2: String
+}
+
+input UserModalityInput {
+  modalityId: Int!
+  primaryPositionId: ID
+  dominantSide: String
+  level: String
+  isFavorite: Boolean
+}
+
+input RankingLocationInput {
+  countryCode: String
+  admin1: String
+  admin2: String
+}
+
+input SyncSessionInput {
+  clientSessionId: UUID!
+  modalityId: Int!
+  source: TrackingSource!
+  startedAt: DateTime!
+  endedAt: DateTime!
+  metrics: [SessionMetricInput!]!
+  trackPoints: [TrackPointInput!]
+  rpe: Int
+  outcome: SessionOutcome
+  pointsFor: Int
+  pointsAgainst: Int
+}
+
+input SessionMetricInput {
+  metricCode: String!
+  value: Float!
+}
+
+input TrackPointInput {
+  seq: Int!
+  recordedAt: DateTime!
+  lat: Float!
+  lng: Float!
+  accuracyM: Float
+  speedMs: Float
+}
+
+input SessionInput {
+  modalityId: Int!
+  clientSessionId: UUID!
+  source: TrackingSource!
+  startedAt: DateTime!
+  endedAt: DateTime!
+  metrics: [SessionMetricInput!]!
+}scalar DateTime
+scalar UUID
+scalar JSON
+
+type Query {
+  ping: String
+  sports(lang: Language): [Sport!]!
+  modalities(sportSlug: String, lang: Language): [Modality!]!
+  modality(slug: String!, lang: Language): Modality
+  catalog(lang: Language): Catalog!
+  viewer: User
+  user(id: ID!): User
+  myConsents: [Consent!]!
+  mySessions(
+    modalityId: Int
+    status: SessionStatus
+    from: DateTime
+    to: DateTime
+    first: Int = 20
+    after: String
+  ): SessionConnection!
+  session(id: UUID!): Session
+  seasons(organizationId: UUID): [Season!]!
+  performanceRanking(
+    modalityId: Int!
+    seasonId: Int!
+    first: Int = 50
+    offset: Int = 0
+    location: RankingLocationInput
+  ): PerformanceRanking!
+  xpRanking(
+    seasonId: Int
+    modalityId: Int
+    first: Int = 50
+    offset: Int = 0
+  ): XpRanking!
+}
+
+type Mutation {
+  signUp(input: SignUpInput!): AuthPayload!
+  signIn(input: SignInInput!): AuthPayload!
+  refreshSession(refreshToken: String!): AuthPayload!
+  signOut(refreshToken: String!): SimplePayload!
+  updateProfile(input: UpdateProfileInput!): UserPayload!
+  upsertUserModality(input: UserModalityInput!): UserPayload!
+  removeUserModality(modalityId: Int!): UserPayload!
+  recordConsent(
+    kind: String!
+    version: String!
+    granted: Boolean!
+  ): SimplePayload!
+  syncSession(input: SyncSessionInput!): SyncSessionPayload!
+  disputeSession(sessionId: UUID!, message: String!): SimplePayload!
+  createSession(input: SessionInput!): Session!
+}
+
+enum Language {
+  PT_BR
+  EN
+}
+
+enum SessionStatus {
+  RECORDING
+  PROCESSING
+  VALID
+  INVALID
+  DISPUTED
+}
+
+enum TrackingSource {
+  GPS
+  IMU
+  MANUAL
+  WEAR_OS
+  HR_SENSOR
+  DERIVED
+}
+
+enum SessionOutcome {
+  WIN
+  DRAW
+  LOSS
+}
+
+type Sport {
+  id: ID!
+  slug: String!
+  name: String!
+  icon: String
   modalities: [Modality!]!
+}
+
+type Modality {
+  id: Int!
+  slug: String!
+  name: String!
+  sportId: Int!
+  sport: Sport!
+  gpsRecommended: Boolean!
+  imuRecommended: Boolean!
+  minValidDurationMin: Int!
+  periodKind: String!
+  metrics: [ModalityMetric!]!
+}
+
+type ModalityMetric {
+  isPrimary: Boolean!
+  weight: Float!
+  metric: Metric!
+}
+
+type Metric {
+  code: String!
+  name: String!
+  unit: String!
+}
+
+type Catalog {
+  modalities: [Modality!]!
+  seasons: [Season!]!
+}
+
+type Season {
+  id: Int!
+  name: String!
+  startDate: String
+  endDate: String
 }
 
 type User {
   id: ID!
   email: String!
-  name: String!
+  fullName: String!
+  displayName: String
+  xpTotal: Int!
+  isPremium: Boolean!
+  birthdate: String
+  locale: String
+  pictureUrl: String
+  location: UserLocation
+  guardian: User
+  teams: [Team!]!
+  organizations: [Organization!]!
+  modalities: [UserModality!]!
 }
 
-type Session {
+type UserLocation {
+  countryCode: String
+  admin1: String
+  admin2: String
+}
+
+type UserModality {
+  modality: Modality!
+  primaryPosition: Position
+  dominantSide: String
+  level: String
+  isFavorite: Boolean!
+}
+
+type Position {
   id: ID!
-  sportId: ID!
-  duration: Int!
-  createdAt: String!
-}
-
-type RankingEntry {
-  userId: ID!
-  userName: String!
-  score: Float!
-  position: Int!
-}
-
-input LoginInput {
-  email: String!
-  password: String!
-}
-
-input RegisterInput {
-  email: String!
-  password: String!
+  code: String!
   name: String!
 }
 
-input SessionInput {
-  sportId: ID!
-  duration: Int!
+type Team {
+  id: ID!
+  name: String!
+}
+
+type Organization {
+  id: ID!
+  name: String!
+}
+
+type Consent {
+  kind: String!
+  version: String!
+  granted: Boolean!
+  createdAt: DateTime!
 }
 
 type AuthPayload {
-  token: String!
-  user: User!
+  accessToken: String
+  refreshToken: String
+  expiresAt: DateTime
+  viewer: User
+  userErrors: [UserError!]!
+}
+
+type UserPayload {
+  user: User
+  userErrors: [UserError!]!
+}
+
+type UserError {
+  code: String!
+  message: String!
+  field: [String!]
+}
+
+type SimplePayload {
+  success: Boolean!
+  userErrors: [UserError!]!
+}
+
+type SessionConnection {
+  totalCount: Int!
+  pageInfo: PageInfo!
+  edges: [SessionEdge!]!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type SessionEdge {
+  cursor: String!
+  node: Session!
+}
+
+type Session {
+  id: UUID!
+  modality: Modality!
+  startedAt: DateTime!
+  endedAt: DateTime
+  durationSeconds: Int
+  status: SessionStatus!
+  score: Float
+  invalidReasons: [String!]!
+  xpEarned: Int!
+}
+
+type SyncSessionPayload {
+  alreadySynced: Boolean!
+  xpEarned: Int!
+  userErrors: [UserError!]!
+  session: Session
+}
+
+type PerformanceRanking {
+  entries: [PerformanceRankingEntry!]!
+  viewerEntry: PerformanceRankingEntry
+}
+
+type PerformanceRankingEntry {
+  position: Int!
+  totalScore: Float!
+  sessionsCounted: Int!
+  user: PublicUser!
+}
+
+type XpRanking {
+  entries: [XpRankingEntry!]!
+  viewerEntry: XpRankingEntry
+}
+
+type XpRankingEntry {
+  position: Int!
+  totalXp: Int!
+  user: PublicUser!
+}
+
+type PublicUser {
+  id: ID!
+  displayName: String!
+  pictureUrl: String
+  location: UserLocation
+}
+
+input SignUpInput {
+  email: String!
+  password: String!
+  fullName: String!
+  birthdate: String
+  locale: String
+}
+
+input SignInInput {
+  email: String!
+  password: String!
+}
+
+input UpdateProfileInput {
+  fullName: String
+  displayName: String
+  birthdate: String
+  pictureUrl: String
+  locale: String
+  location: UserLocationInput
+}
+
+input UserLocationInput {
+  countryCode: String
+  admin1: String
+  admin2: String
+}
+
+input UserModalityInput {
+  modalityId: Int!
+  primaryPositionId: ID
+  dominantSide: String
+  level: String
+  isFavorite: Boolean
+}
+
+input RankingLocationInput {
+  countryCode: String
+  admin1: String
+  admin2: String
+}
+
+input SyncSessionInput {
+  clientSessionId: UUID!
+  modalityId: Int!
+  source: TrackingSource!
+  startedAt: DateTime!
+  endedAt: DateTime!
+  metrics: [SessionMetricInput!]!
+  trackPoints: [TrackPointInput!]
+  rpe: Int
+  outcome: SessionOutcome
+  pointsFor: Int
+  pointsAgainst: Int
+}
+
+input SessionMetricInput {
+  metricCode: String!
+  value: Float!
+}
+
+input TrackPointInput {
+  seq: Int!
+  recordedAt: DateTime!
+  lat: Float!
+  lng: Float!
+  accuracyM: Float
+  speedMs: Float
+}
+
+input SessionInput {
+  modalityId: Int!
+  clientSessionId: UUID!
+  source: TrackingSource!
+  startedAt: DateTime!
+  endedAt: DateTime!
+  metrics: [SessionMetricInput!]!
 }
