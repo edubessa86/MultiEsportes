@@ -12,13 +12,13 @@ type Session = {
   id: string; startedAt: string; endedAt: string | null; durationSeconds: number | null;
   status: string; score: string | null; source: string; invalidReasons: string[];
   rpe: number | null; outcome: string | null; pointsFor: number | null; pointsAgainst: number | null;
-  xpEarned: number; modality: { name: string; slug: string; sport: { slug: string; name: string } };
+  xpEarned: number; modality: { id: number; name: string; slug: string; sport: { slug: string; name: string } };
   metrics: Metric[]; trackPoints: Point[];
 };
 const QUERY = `query($id: UUID!) {
   session(id: $id) {
     id startedAt endedAt durationSeconds status score source invalidReasons rpe outcome pointsFor pointsAgainst xpEarned
-    modality { name slug sport { slug name } }
+    modality { id name slug sport { slug name } }
     metrics { value metric { code name unit } }
     trackPoints(first: 5000, after: 0) { seq recordedAt lat lng accuracyM speedMs }
   }
@@ -40,11 +40,25 @@ function metricValue(m: Metric): string {
   if (c.endsWith('_speed_kmh')) return `${num(v, 1)} km/h`;
   return `${num(v, 1)} ${m.metric.unit}`.trim();
 }
+type AIAnalysis = {
+  title: string; summary: string; trends: string[]; strengths: string[];
+  improvements: string[]; recommendations: string[]; limitations: string[];
+  sessionsAnalyzed: number; generatedAt: string;
+};
+const AI_QUERY = `query($modalityId: Int, $first: Int) {
+  myPerformanceAnalysis(modalityId: $modalityId, first: $first) {
+    title summary trends strengths improvements recommendations limitations sessionsAnalyzed generatedAt
+  }
+}`;
+
 export default function SessionDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
   useEffect(() => {
     let active = true;
     (async () => {
@@ -61,6 +75,18 @@ export default function SessionDetail() {
   if (loading) return <Screen><Title>Relatório da partida</Title><Muted>Carregando dados…</Muted></Screen>;
   if (!session) return <Screen><Title>Relatório da partida</Title><Banner kind="error">{error ?? 'Sessão indisponível.'}</Banner><Button title="Voltar" onPress={() => router.back()} /></Screen>;
   const metrics = session.metrics ?? [];
+  const runAIAnalysis = async () => {
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const result = await gql<{ myPerformanceAnalysis: AIAnalysis }>(AI_QUERY, { modalityId: session.modality.id, first: 10 });
+      setAiAnalysis(result.myPerformanceAnalysis);
+    } catch (e) {
+      setAiError(errorMessage(e));
+    } finally {
+      setAiLoading(false);
+    }
+  };
   const byCode = new Map(metrics.map(m => [m.metric.code, m]));
   const order = ['distance_total_m','elapsed_time_s','active_time_s','avg_speed_kmh','max_speed_kmh','high_intensity_distance_m','sprint_count','accel_count','avg_pace_min_km','best_pace_min_km'];
   const selected = order.map(c => byCode.get(c)).filter((m): m is Metric => !!m);
@@ -149,7 +175,23 @@ export default function SessionDetail() {
         <Muted>Use a comparação entre partidas do mesmo atleta e da mesma modalidade para interpretar evolução; uma sessão isolada não mede sozinha o desempenho técnico ou tático.</Muted>
       </Card>
     </>}
+    <Heading>Análise com IA generativa</Heading>
+    <Card>
+      <Muted>A IA compara até 10 sessões válidas da mesma modalidade, procurando tendências em métricas reais. Coordenadas GPS, identificadores e dados de contato não são enviados ao provedor.</Muted>
+      <Button title={aiLoading ? 'Analisando sessões…' : aiAnalysis ? 'Atualizar análise de desempenho' : 'Analisar meu desempenho com IA'} onPress={runAIAnalysis} loading={aiLoading} />
+      {aiError && <Banner kind="error">{aiError}</Banner>}
+      {aiAnalysis && <>
+        <Heading>{aiAnalysis.title}</Heading>
+        <Muted>{aiAnalysis.summary}</Muted>
+        <Muted>Base: {aiAnalysis.sessionsAnalyzed} sessões válidas · gerado em {fmtDate(aiAnalysis.generatedAt)}.</Muted>
+        {aiAnalysis.trends.length > 0 && <><Heading>Tendências identificadas</Heading>{aiAnalysis.trends.map((v, i) => <Muted key={i}>• {v}</Muted>)}</>}
+        {aiAnalysis.strengths.length > 0 && <><Heading>Pontos fortes</Heading>{aiAnalysis.strengths.map((v, i) => <Muted key={i}>• {v}</Muted>)}</>}
+        {aiAnalysis.improvements.length > 0 && <><Heading>Pontos de melhoria</Heading>{aiAnalysis.improvements.map((v, i) => <Muted key={i}>• {v}</Muted>)}</>}
+        {aiAnalysis.recommendations.length > 0 && <><Heading>Próximos passos</Heading>{aiAnalysis.recommendations.map((v, i) => <Muted key={i}>• {v}</Muted>)}</>}
+        {aiAnalysis.limitations.length > 0 && <><Heading>Limitações da análise</Heading>{aiAnalysis.limitations.map((v, i) => <Muted key={i}>• {v}</Muted>)}</>}
+      </>}
+    </Card>
     {(session.invalidReasons ?? []).length > 0 && <Card><Heading>Alertas de validação</Heading>{(session.invalidReasons ?? []).map(r => <Muted key={r} style={{ color: colors.danger }}>• {reasonLabel(r)}</Muted>)}</Card>}
-    <Banner kind="info">As métricas dependem da qualidade do GPS e da continuidade da gravação. A nota é indicativa e transparente; a integração de IA generativa e a calibração esportiva ficam como etapas futuras.</Banner>
+    <Banner kind="info">As métricas dependem da qualidade do GPS e da continuidade da gravação. A nota é indicativa e não calibrada. A análise generativa compara apenas sessões válidas e depende da configuração do provedor de IA.</Banner>
   </Screen>;
 }
