@@ -126,7 +126,7 @@ export const aiResolvers = {
         let item = bySession.get(key);
         if (!item) {
           item = { date: new Date(r.started_at).toISOString().slice(0, 10), modality: r.modality_name,
-            durationSeconds: r.duration_seconds == null ? null : Number(r.duration_seconds),
+            durationSeconds: r.duration_s == null ? null : Number(r.duration_s),
             rpe: r.rpe == null ? null : Number(r.rpe), feeling: r.feeling == null ? null : Number(r.feeling),
             outcome: r.outcome, pointsFor: r.points_for == null ? null : Number(r.points_for),
             pointsAgainst: r.points_against == null ? null : Number(r.points_against), metrics: [] };
