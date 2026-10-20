@@ -9,7 +9,8 @@ export class ApiError extends Error {
   }
 }
 
-let serverUrl = '';
+export const DEFAULT_SERVER_URL = 'https://multiesportes.onrender.com';
+let serverUrl = DEFAULT_SERVER_URL;
 let tokens: Tokens | null = null;
 let refreshing: Promise<boolean> | null = null;
 let onSessionExpired: (() => void) | null = null;
@@ -20,7 +21,9 @@ export const getServerUrl = () => serverUrl;
 export { normalizeServerUrl } from './url';
 
 export async function loadStored(): Promise<{ hasTokens: boolean }> {
-  serverUrl = (await kv.get<string>('serverUrl')) ?? '';
+  // Endpoint oficial embutido no app: não precisa ser informado pelo usuário.
+  serverUrl = DEFAULT_SERVER_URL;
+  await kv.set('serverUrl', DEFAULT_SERVER_URL);
   try {
     const raw = await secure.get('tokens');
     tokens = raw ? (JSON.parse(raw) as Tokens) : null;
@@ -30,9 +33,9 @@ export async function loadStored(): Promise<{ hasTokens: boolean }> {
   return { hasTokens: !!tokens };
 }
 
-export async function setServerUrl(raw: string): Promise<string> {
-  serverUrl = normalizeServerUrl(raw);
-  await kv.set('serverUrl', serverUrl);
+export async function setServerUrl(_raw: string): Promise<string> {
+  serverUrl = DEFAULT_SERVER_URL;
+  await kv.set('serverUrl', DEFAULT_SERVER_URL);
   return serverUrl;
 }
 

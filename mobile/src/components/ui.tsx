@@ -35,14 +35,14 @@ export function Button({ title, onPress, variant = 'primary', disabled, loading,
   title: string; onPress: () => void; variant?: 'primary' | 'secondary' | 'danger'; disabled?: boolean; loading?: boolean; style?: ViewStyle;
 }) {
   const bg = variant === 'primary' ? colors.primary : variant === 'danger' ? colors.danger : colors.card;
-  const fg = variant === 'secondary' ? colors.primary : '#fff';
+  const fg = variant === 'secondary' ? colors.primaryDark : '#fff';
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.btn, { backgroundColor: bg, opacity: disabled ? 0.5 : pressed ? 0.85 : 1 },
-        variant === 'secondary' && { borderWidth: 1, borderColor: colors.primary }, style,
+        variant === 'secondary' && { borderWidth: 1, borderColor: colors.primaryDark }, style,
       ]}
     >
       {loading ? <ActivityIndicator color={fg} /> : <Text style={[styles.btnText, { color: fg }]}>{title}</Text>}
@@ -63,7 +63,7 @@ export function Field(props: TextInputProps & { label: string }) {
   return (
     <View style={{ gap: space.xs }}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} style={[styles.input, style]} {...rest} />
+      <TextInput placeholderTextColor="#667085" autoCapitalize="none" autoCorrect={false} style={[styles.input, style]} {...rest} />
     </View>
   );
 }
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: 14, color: colors.text, fontWeight: '500' },
   label: { fontSize: 13, color: colors.muted, fontWeight: '500' },
-  input: { minHeight: 48, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: '#fff', paddingHorizontal: 12, fontSize: 16, color: colors.text },
+  input: { minHeight: 48, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: '#F7FAFC', paddingHorizontal: 12, fontSize: 16, color: '#101828' },
   banner: { borderRadius: 10, padding: space.md },
   stat: { flex: 1, alignItems: 'center', paddingVertical: space.sm },
   statValue: { fontSize: 26, fontWeight: '700', color: colors.text },
