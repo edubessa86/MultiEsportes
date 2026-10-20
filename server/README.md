@@ -78,6 +78,20 @@ em HTTP puro, senha e token trafegam sem criptografia. Para uso fora de casa, co
 As outras 46 operações do schema (times, súmula, quizzes, avaliações, pagamentos...) respondem
 `NOT_IMPLEMENTED`, com erro claro em vez de `null`.
 
+## Análise de desempenho com IA generativa
+
+A tela de relatório permite analisar as até 10 sessões válidas mais recentes da mesma modalidade. A análise procura tendências, pontos fortes, oportunidades de melhoria e próximos passos, sempre com base nos dados efetivamente registrados. A API filtra sessões pelo usuário autenticado e não envia coordenadas GPS, IDs de sessão, nome, e-mail ou tokens ao provedor.
+
+Para habilitar a funcionalidade, configure no ambiente do servidor (Render ou `.env` local):
+
+```env
+OPENAI_API_KEY=sua_chave_do_provedor
+OPENAI_MODEL=gpt-4o-mini
+# Opcional, apenas para endpoints compatíveis com a API Chat Completions:
+# OPENAI_BASE_URL=https://api.openai.com/v1/chat/completions
+```
+
+A chave fica somente no servidor; nunca a inclua no app mobile ou no repositório. Sem a chave, a API responde `AI_NOT_CONFIGURED`. A chamada tem timeout de 25 segundos e limite de 20 sessões por solicitação. O modelo é configurável para permitir trocar de modelo/provedor compatível. A análise não é diagnóstico médico nem avaliação técnica certificada; métricas ausentes, ruído do GPS e poucas sessões podem impedir conclusões confiáveis. Chamadas ao provedor podem gerar custos.
 ## Decisões de segurança
 
 - Token no header `Authorization`, nunca como argumento. Access token de 15 min; refresh token rotativo
