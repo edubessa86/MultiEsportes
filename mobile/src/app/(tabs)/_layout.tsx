@@ -6,7 +6,7 @@ const icon = (emoji: string) => () => <Text style={{ fontSize: 20 }}>{emoji}</Te
 
 export default function TabsLayout() {
   return (
-    <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.primary, tabBarLabelStyle: { fontSize: 12 } }}>
+    <Tabs screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.primaryDark, tabBarInactiveTintColor: colors.muted, tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border }, tabBarLabelStyle: { fontSize: 12 } }}>
       <Tabs.Screen name="index" options={{ title: 'Treinar', tabBarIcon: icon('⚽') }} />
       <Tabs.Screen name="history" options={{ title: 'Histórico', tabBarIcon: icon('📋') }} />
       <Tabs.Screen name="ranking" options={{ title: 'Ranking', tabBarIcon: icon('🏆') }} />
