@@ -70,6 +70,7 @@ export default function SessionDetail() {
   const football = footballSlugs.has(session.modality.slug) || /futebol|futsal|society|salão/i.test(session.modality.name);
   const distance = metricNumber(metrics, 'distance_total_m');
   const maxSpeed = metricNumber(metrics, 'max_speed_kmh');
+  const avgPace = metricNumber(metrics, 'avg_pace_min_km');
   const sprints = metricNumber(metrics, 'sprint_count');
   const accelerations = metricNumber(metrics, 'accel_count');
   const activeTime = metricNumber(metrics, 'active_time_s');
@@ -79,6 +80,7 @@ export default function SessionDetail() {
   const scoreParts = [
     distance == null ? null : Math.min(10, (distance / 6000) * 10),
     maxSpeed == null ? null : Math.min(10, (maxSpeed / 28) * 10),
+    avgPace == null || avgPace <= 0 ? null : Math.min(10, (4.5 / avgPace) * 10),
     sprints == null ? null : Math.min(10, (sprints / 12) * 10),
     accelerations == null ? null : Math.min(10, (accelerations / 25) * 10),
     activeTime == null || !duration || duration <= 0 ? null : Math.min(10, (activeTime / duration) * 10),
@@ -96,6 +98,7 @@ export default function SessionDetail() {
   const movementSummary: string[] = [];
   if (distance != null) movementSummary.push(distance >= 6000 ? 'volume de deslocamento elevado para a referência inicial' : 'há espaço para aumentar o volume de deslocamento gradualmente');
   if (maxSpeed != null) movementSummary.push(maxSpeed >= 25 ? 'atingiu velocidade máxima compatível com corrida intensa' : 'a velocidade máxima registrada ficou abaixo de 25 km/h');
+  if (avgPace != null && avgPace > 0) movementSummary.push(avgPace <= 4.5 ? 'ritmo médio acima da referência inicial de intensidade' : 'ritmo médio abaixo da referência inicial de intensidade');
   if (sprints != null) movementSummary.push(sprints > 0 ? `foram detectados ${Math.round(sprints)} sprints` : 'não foram detectados sprints pelos limiares atuais');
   if (activeTime != null && duration && duration > 0) movementSummary.push(`tempo ativo estimado em ${Math.round(activeTime / duration * 100)}% da duração considerada`);
   return <Screen>
@@ -137,7 +140,7 @@ export default function SessionDetail() {
       <Card>
         {performanceScore == null ? <Muted>Não há pelo menos três indicadores medidos para calcular uma nota responsável. Grave mais dados de GPS para habilitá-la.</Muted> : <>
           <Text style={{ fontSize: 32, fontWeight: '800', color: colors.primary }}>{performanceScore.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}/10</Text>
-          <Muted>Média simples de indicadores normalizados: distância (referência 6 km), velocidade máxima (28 km/h), sprints (12), acelerações (25) e proporção de tempo ativo. Referências iniciais, não calibradas por posição, idade, sexo ou modalidade.</Muted>
+          <Muted>Média simples de indicadores normalizados: distância (6 km), ritmo médio (4:30 min/km), velocidade máxima (28 km/h), sprints (12), acelerações (25) e proporção de tempo ativo. Referências iniciais, não calibradas por posição, idade, sexo ou modalidade.</Muted>
         </>}
       </Card>
       <Heading>Resumo automático</Heading>
