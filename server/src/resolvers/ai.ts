@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql';
-import { pool, tx } from '../db.js';
+import { tx } from '../db.js';
 import { requireUser, clamp, type Ctx } from '../context.js';
 
 type Metric = { code: string; name: string; unit: string; value: number };
@@ -101,7 +101,7 @@ export const aiResolvers = {
       const limit = clamp(args.first, 3, 20, 10);
       const rows = await tx(userId, async c => (await c.query(
         `WITH recent AS (
-           SELECT s.id, s.started_at, s.duration_seconds, s.rpe, s.feeling, s.outcome,
+           SELECT s.id, s.started_at, s.duration_s, s.rpe, s.feeling, s.outcome,
                   s.points_for, s.points_against, s.modality_id
              FROM sessions s
             WHERE s.user_id = $1 AND s.status = 'valid'
@@ -109,7 +109,7 @@ export const aiResolvers = {
             ORDER BY s.started_at DESC, s.id DESC
             LIMIT $3
          )
-         SELECT r.id AS session_id, r.started_at, r.duration_seconds, r.rpe, r.feeling, r.outcome,
+         SELECT r.id AS session_id, r.started_at, r.duration_s, r.rpe, r.feeling, r.outcome,
                 r.points_for, r.points_against, m.name_pt AS modality_name,
                 md.code AS metric_code, md.label_pt AS metric_name, md.unit AS metric_unit,
                 sm.value::float8 AS metric_value
