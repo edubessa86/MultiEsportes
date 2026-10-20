@@ -21,6 +21,8 @@ function Root() {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="record" options={{ gestureEnabled: false }} />
+        {/* Tela de detalhes acessada pelo botão "Ver relatório detalhado" no Histórico. */}
+        <Stack.Screen name="session-detail" />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="login" />
