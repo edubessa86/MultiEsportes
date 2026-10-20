@@ -21,7 +21,9 @@ export const getServerUrl = () => serverUrl;
 export { normalizeServerUrl } from './url';
 
 export async function loadStored(): Promise<{ hasTokens: boolean }> {
-  // Endpoint oficial embutido no app: não precisa ser informado pelo usuário.\n  serverUrl = DEFAULT_SERVER_URL;\n  await kv.set('serverUrl', DEFAULT_SERVER_URL);
+  // Endpoint oficial embutido no app: não precisa ser informado pelo usuário.
+  serverUrl = DEFAULT_SERVER_URL;
+  await kv.set('serverUrl', DEFAULT_SERVER_URL);
   try {
     const raw = await secure.get('tokens');
     tokens = raw ? (JSON.parse(raw) as Tokens) : null;
@@ -31,9 +33,9 @@ export async function loadStored(): Promise<{ hasTokens: boolean }> {
   return { hasTokens: !!tokens };
 }
 
-export async function setServerUrl(raw: string): Promise<string> {
-  serverUrl = normalizeServerUrl(raw);
-  await kv.set('serverUrl', serverUrl);
+export async function setServerUrl(_raw: string): Promise<string> {
+  serverUrl = DEFAULT_SERVER_URL;
+  await kv.set('serverUrl', DEFAULT_SERVER_URL);
   return serverUrl;
 }
 
