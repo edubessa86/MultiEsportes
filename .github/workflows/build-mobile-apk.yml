@@ -15,9 +15,11 @@ jobs:
     name: Validate and build preview APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     defaults:
       run:
         working-directory: mobile
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -56,11 +58,58 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
+          set -eu
+
           if [ -z "$EXPO_TOKEN" ]; then
             echo "::error::Configure EXPO_TOKEN in repository Settings > Secrets and variables > Actions."
             exit 1
           fi
-          node -e "const c=require('./app.json').expo; if (!c.extra?.eas?.projectId) { console.error('::error::Este app ainda não está vinculado a um projeto EAS. Execute npx eas-cli@latest init na pasta mobile, confirme o vínculo e envie o projectId em mobile/app.json.'); process.exit(1); }"
+
+          echo "Diretório atual: $(pwd)"
+          echo "Verificando arquivo app.json..."
+
+          if [ ! -f app.json ]; then
+            echo "::error::Arquivo app.json não encontrado no diretório mobile."
+            exit 1
+          fi
+
+          node <<'NODE'
+          const fs = require('fs');
+
+          let config;
+
+          try {
+            config = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+          } catch (error) {
+            console.error('::error::Não foi possível ler mobile/app.json como JSON válido.');
+            console.error(error.message);
+            process.exit(1);
+          }
+
+          const expo = config.expo;
+          const projectId = expo?.extra?.eas?.projectId;
+          const expectedProjectId = '776a4864-753a-4275-b07b-a26bfcb4789a';
+
+          console.log('Expo owner:', expo?.owner ?? '(não definido)');
+          console.log('Expo slug:', expo?.slug ?? '(não definido)');
+          console.log('EAS projectId:', projectId ?? '(não encontrado)');
+
+          if (!projectId) {
+            console.error(
+              '::error::O campo expo.extra.eas.projectId não foi encontrado em mobile/app.json.'
+            );
+            process.exit(1);
+          }
+
+          if (projectId !== expectedProjectId) {
+            console.error(
+              '::error::O projectId encontrado não corresponde ao projeto EAS esperado.'
+            );
+            process.exit(1);
+          }
+
+          console.log('Configuração EAS validada com sucesso.');
+          NODE
 
       - name: Build APK on Expo EAS
         env:
