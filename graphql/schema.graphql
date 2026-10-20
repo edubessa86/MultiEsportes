@@ -351,6 +351,22 @@ type SessionDispute {
   createdAt: DateTime!
 }
 
+"""
+Análise de desempenho baseada nas métricas reais do atleta.
+Conteúdo gerado por IA; não substitui avaliação profissional.
+"""
+type PerformanceAIAnalysis {
+  title: String!
+  summary: String!
+  trends: [String!]!
+  strengths: [String!]!
+  improvements: [String!]!
+  recommendations: [String!]!
+  limitations: [String!]!
+  sessionsAnalyzed: Int!
+  generatedAt: DateTime!
+}
+
 # ---------------------------------------------------------------------
 # PARTIDAS (súmula digital)
 # ---------------------------------------------------------------------
@@ -681,6 +697,8 @@ type Query {
 
   # ----- Sessões e partidas -----
   session(id: UUID!): Session @auth(requires: USER)
+  "Análise generativa das últimas sessões válidas do próprio atleta; não inclui coordenadas GPS."
+  myPerformanceAnalysis(modalityId: Int, first: Int = 10): PerformanceAIAnalysis! @auth(requires: USER)
   mySessions(
     modalityId: Int, status: SessionStatus, from: DateTime, to: DateTime,
     first: Int = 20, after: String

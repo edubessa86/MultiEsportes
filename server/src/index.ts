@@ -10,6 +10,7 @@ import { catalogResolvers } from './resolvers/catalog.js';
 import { accountResolvers } from './resolvers/accounts.js';
 import { sessionResolvers } from './resolvers/sessions.js';
 import { rankingResolvers } from './resolvers/ranking.js';
+import { aiResolvers } from './resolvers/ai.js';
 
 // O contrato da API é o mesmo SDL entregue em /graphql/schema.graphql.
 // Procura em: SCHEMA_PATH, server/schema.graphql, ../graphql/schema.graphql (repositório completo).
@@ -34,7 +35,7 @@ for (const d of doc.definitions) {
 enums.Language = { PT_BR: 'pt-BR', EN: 'en' };
 
 // Junta os resolvers dos módulos
-const modules = [catalogResolvers, accountResolvers, sessionResolvers, rankingResolvers] as Record<string, any>[];
+const modules = [catalogResolvers, accountResolvers, sessionResolvers, rankingResolvers, aiResolvers] as Record<string, any>[];
 const resolvers: Record<string, any> = { ...enums };
 for (const m of modules) for (const [type, fields] of Object.entries(m)) resolvers[type] = { ...(resolvers[type] ?? {}), ...fields };
 
